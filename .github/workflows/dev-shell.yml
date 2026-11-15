@@ -1,0 +1,35 @@
+name: Dev shell (interactive build box)
+# A short-lived Linux box that executes commands pushed to the branch `shell-in` and publishes their
+# output to the branch `shell-out` (see ci/devshell/README.md). Started by pushing the branch `dev-shell`.
+# Uses no repository secrets. If the repository is public, every command and output is public.
+on:
+  push:
+    branches: [dev-shell]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: dev-shell
+  cancel-in-progress: true
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # TOOLCHAIN: add the setup step(s) your project needs here. ubuntu-latest already has git, python3, node.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          cache: true
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '20'
+      - name: relay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Shown in out/ready.txt so the client can see which toolchain the box has, e.g. 'flutter --version' or 'node --version'.
+          DS_VERSION_CMD: 'flutter --version'
+        run: bash ci/devshell/loop.sh

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# dsync [branch]: move the box's working tree to origin/<branch>. Untracked files and build caches stay.
+# If ci/devshell/after_sync.sh exists it runs afterwards (DS_OLD_HEAD = the commit before the sync), e.g. to run
+# a dependency install only when a lock file changed.
+set -e
+cd "${DS_REPO:?}"
+BR="${1:-${DS_BRANCH:-main}}"
+old=$(git rev-parse HEAD)
+git fetch -q --depth=1 origin "+$BR:refs/remotes/origin/$BR"
+git reset -q --hard "origin/$BR"
+git log -1 --format='synced %h %s'
+if [ -f ci/devshell/after_sync.sh ]; then DS_OLD_HEAD="$old" bash ci/devshell/after_sync.sh; fi
