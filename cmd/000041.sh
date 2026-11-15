@@ -1,0 +1,2 @@
+# timeout=800
+git fetch -q origin v0.3 && git reset -q --hard FETCH_HEAD && bash ci/prepare_android.sh >/dev/null 2>&1; flutter build apk --release 2>&1 | grep -v -E "^Warning|Build-Tools|Preparing|ready|Installing|finished|complete|license" | tail -25; ls -la build/app/outputs/flutter-apk/ 2>&1 | tail -4; mkdir -p "$DS_ART" && cp build/app/outputs/flutter-apk/app-release.apk "$DS_ART/directional-audio-v0.3.0.apk" 2>&1; echo "--- kotlin log"; grep -h -E "error:|warning:.*Engine" /tmp/kotlin-daemon*.log 2>/dev/null | tail -10

@@ -1,0 +1,1 @@
+emu tap 120 430; sleep 3; emu shot app_on; echo "--- crash:"; emu crash | head -20; echo "--- log (app/audio):"; emu log 400 | grep -i -E "directional|AudioEffect|Equalizer|EQ_ERROR" | head -12; emu tap 84 202; sleep 2; emu shot app_en

@@ -1,0 +1,1 @@
+emu shot launcher

@@ -1,0 +1,2 @@
+# timeout=560
+dsync main >/dev/null; flutter analyze 2>&1 | tail -2; flutter test 2>&1 | tail -2; flutter build apk --release > /tmp/build.log 2>&1; echo "build rc=$?"; grep -E "Built " /tmp/build.log; APK=build/app/outputs/flutter-apk/app-release.apk; cp $APK "$DS_ART"/directional-audio-0.1.1.apk; P=$(emu pkg $APK); emu install $APK | tail -1; emu launch $P >/dev/null; sleep 8; emu shot app_ar_fixed
