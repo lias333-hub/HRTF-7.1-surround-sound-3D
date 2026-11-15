@@ -79,7 +79,7 @@ class MainActivity : FlutterActivity() {
     private fun release() {
         try {
             eq?.release()
-        } catch (_: Exception) {
+        } catch (ignored: Exception) {
         }
         eq = null
     }
