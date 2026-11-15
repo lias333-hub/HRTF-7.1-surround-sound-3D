@@ -1,0 +1,335 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'engine.dart';
+import 'eq_model.dart';
+import 'store.dart';
+import 'strings.dart';
+
+class EqScreen extends StatefulWidget {
+  const EqScreen({super.key, required this.onToggleLang});
+
+  final VoidCallback onToggleLang;
+
+  @override
+  State<EqScreen> createState() => _EqScreenState();
+}
+
+class _EqScreenState extends State<EqScreen> {
+  final _engine = EqEngine();
+  EqProfile _working = EqProfile.flat();
+  String _selected = 'builtin:flat';
+  List<EqProfile> _user = [];
+  bool _enabled = false;
+  bool _loaded = false;
+  String? _error;
+
+  List<EqProfile> get _all => [...kBuiltInProfiles, ..._user];
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final s = await Store.load();
+    if (!mounted) return;
+    setState(() {
+      _user = s.user;
+      _working = s.working;
+      _selected = _all.any((e) => e.name == s.selected)
+          ? s.selected
+          : 'builtin:flat';
+      _loaded = true;
+    });
+    if (s.enabled) await _setEnabled(true);
+  }
+
+  Future<void> _setEnabled(bool on) async {
+    try {
+      if (on) {
+        await _engine.start();
+        await _engine.setEnabled(true);
+        _enabled = true;
+        await _apply();
+      } else {
+        await _engine.setEnabled(false);
+        _enabled = false;
+      }
+      if (mounted) setState(() => _error = null);
+    } on PlatformException catch (e) {
+      _enabled = false;
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    } on MissingPluginException {
+      _enabled = false;
+      if (mounted) setState(() => _error = 'native bridge missing');
+    }
+    Store.saveEnabled(_enabled);
+  }
+
+  Future<void> _apply() async {
+    final info = _engine.info;
+    if (info == null || !_enabled) return;
+    final levels = deviceLevels(
+      gains: _working.gains,
+      preamp: _working.preamp,
+      lows: info.lows,
+      highs: info.highs,
+      centers: info.centers,
+      minMb: info.minMb,
+      maxMb: info.maxMb,
+    );
+    try {
+      await _engine.setLevels(levels);
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    }
+  }
+
+  void _edit(EqProfile p) {
+    setState(() => _working = p);
+    Store.saveWorking(p, _selected);
+    _apply();
+  }
+
+  void _select(String key) {
+    final p = _all.firstWhere((e) => e.name == key);
+    setState(() => _selected = key);
+    _edit(p.copyWith(name: key));
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _saveAs() async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L10n.t('save_as')),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(labelText: L10n.t('name')),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(L10n.t('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text(L10n.t('save'))),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final p = EqProfile(
+        name: name, gains: List<double>.of(_working.gains), preamp: _working.preamp);
+    final i = _user.indexWhere((e) => e.name == name);
+    setState(() {
+      if (i >= 0) {
+        _user[i] = p;
+      } else {
+        _user.add(p);
+      }
+      _selected = name;
+      _working = p;
+    });
+    await Store.saveUser(_user);
+    await Store.saveWorking(p, name);
+  }
+
+  void _delete() {
+    if (_selected.startsWith(kBuiltInPrefix)) return;
+    setState(() => _user.removeWhere((e) => e.name == _selected));
+    Store.saveUser(_user);
+    _select('builtin:flat');
+  }
+
+  Future<void> _import() async {
+    final ctrl = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L10n.t('import_title')),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 6,
+          decoration: InputDecoration(hintText: L10n.t('import_hint')),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final d = await Clipboard.getData('text/plain');
+              ctrl.text = d?.text ?? '';
+            },
+            child: Text(L10n.t('paste')),
+          ),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(L10n.t('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: Text(L10n.t('import'))),
+        ],
+      ),
+    );
+    if (text == null || text.trim().isEmpty) return;
+    final parsed = parseGraphicEq(text);
+    if (parsed == null) {
+      _snack(L10n.t('import_bad'));
+      return;
+    }
+    _edit(EqProfile(name: _selected, gains: parsed.gains, preamp: parsed.preamp));
+    _snack(L10n.t('import_ok'));
+  }
+
+  Future<void> _export() async {
+    await Clipboard.setData(ClipboardData(text: formatGraphicEq(_working)));
+    _snack(L10n.t('copied'));
+  }
+
+  String _freqLabel(double hz) =>
+      hz >= 1000 ? '${(hz / 1000).round()}k' : hz.round().toString();
+
+  String _statusText() {
+    final info = _engine.info;
+    if (_enabled && info != null) {
+      return L10n.t('bands_info')
+          .replaceAll('{n}', '${info.bands}')
+          .replaceAll('{r}', '${(info.maxMb / 100).round()}');
+    }
+    return L10n.t('tip_global');
+  }
+
+  Widget _band(int i) {
+    final small = Theme.of(context).textTheme.labelSmall;
+    return Expanded(
+      child: Column(
+        children: [
+          Text(_working.gains[i].toStringAsFixed(1), style: small),
+          Expanded(
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Slider(
+                min: kMinGain,
+                max: kMaxGain,
+                divisions: 48,
+                value: _working.gains[i],
+                onChanged: (v) => _edit(_working.withGain(i, v)),
+              ),
+            ),
+          ),
+          Text(_freqLabel(kBandFreqs[i]), style: small),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.t;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(t('app_title')),
+        actions: [
+          TextButton(
+            onPressed: widget.onToggleLang,
+            child: Text(L10n.lang == 'ar' ? 'EN' : 'ع'),
+          ),
+        ],
+      ),
+      body: !_loaded
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(t('effect_on')),
+                  subtitle: Text(
+                    _error ?? _statusText(),
+                    style: _error == null
+                        ? null
+                        : TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                  value: _enabled,
+                  onChanged: _setEnabled,
+                ),
+                const SizedBox(height: 8),
+                Text(t('profile'), style: Theme.of(context).textTheme.labelLarge),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: _selected,
+                  items: [
+                    for (final p in _all)
+                      DropdownMenuItem(
+                          value: p.name, child: Text(L10n.profileName(p.name))),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) _select(v);
+                  },
+                ),
+                const SizedBox(height: 12),
+                // Frequencies always run low -> high, left to right, in both languages.
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: SizedBox(
+                    height: 260,
+                    child: Row(children: [for (var i = 0; i < kBandFreqs.length; i++) _band(i)]),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Text(t('preamp')),
+                    Expanded(
+                      child: Slider(
+                        min: kMinGain,
+                        max: kMaxGain,
+                        divisions: 48,
+                        value: _working.preamp,
+                        onChanged: (v) => _edit(_working.withPreamp(v)),
+                      ),
+                    ),
+                    Text('${_working.preamp.toStringAsFixed(1)} dB'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                        onPressed: () => _edit(EqProfile.flat(_selected)),
+                        icon: const Icon(Icons.restart_alt),
+                        label: Text(t('reset'))),
+                    OutlinedButton.icon(
+                        onPressed: _saveAs,
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(t('save_as'))),
+                    OutlinedButton.icon(
+                        onPressed: _import,
+                        icon: const Icon(Icons.file_download_outlined),
+                        label: Text(t('import'))),
+                    OutlinedButton.icon(
+                        onPressed: _export,
+                        icon: const Icon(Icons.file_upload_outlined),
+                        label: Text(t('export'))),
+                    if (!_selected.startsWith(kBuiltInPrefix))
+                      OutlinedButton.icon(
+                          onPressed: _delete,
+                          icon: const Icon(Icons.delete_outline),
+                          label: Text(t('delete'))),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(t('note_bands'), style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+    );
+  }
+}
