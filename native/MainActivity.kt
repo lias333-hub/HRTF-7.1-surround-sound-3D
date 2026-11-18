@@ -28,7 +28,7 @@ class MainActivity : FlutterActivity() {
                             result.success(eq?.enabled ?: false)
                         }
                         "stop" -> {
-                            release()
+                            releaseEq()
                             result.success(null)
                         }
                         else -> result.notImplemented()
@@ -40,7 +40,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun start(session: Int): Map<String, Any> {
-        release()
+        releaseEq()
         val e = Equalizer(0, session)
         eq = e
         e.enabled = false
@@ -76,7 +76,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun release() {
+    private fun releaseEq() {
         try {
             eq?.release()
         } catch (ignored: Exception) {
