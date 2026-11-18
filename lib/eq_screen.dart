@@ -295,7 +295,10 @@ class _EqScreenState extends State<EqScreen> {
                         onChanged: (v) => _edit(_working.withPreamp(v)),
                       ),
                     ),
-                    Text('${_working.preamp.toStringAsFixed(1)} dB'),
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Text('${_working.preamp.toStringAsFixed(1)} dB'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
