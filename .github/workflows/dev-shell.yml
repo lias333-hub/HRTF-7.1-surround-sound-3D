@@ -24,6 +24,12 @@ jobs:
         with:
           flutter-version: '3.22.0'
           cache: true
+      # ANDROID / FLUTTER: on the runner measured 2026-11-16 the default JDK is 25, and the Gradle 7.x that Flutter <= 3.22 uses
+      # fails on it ("Unsupported class file major version 69"). JDK 17 is preinstalled; select it before building:
+      - name: Use JDK 17
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
       # - uses: actions/setup-node@v4
       #   with:
       #     node-version: '20'
