@@ -10,7 +10,8 @@ void main() {
     testWidgets('EqScreen renders 10 band sliders + preamp ($lang)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       L10n.setPref(lang, 'en');
-      tester.view.physicalSize = const Size(1080, 2400);
+      // Tall on purpose: the list is lazy, and longer translations push the bottom rows further down.
+      tester.view.physicalSize = const Size(1080, 4800);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
 
@@ -25,9 +26,6 @@ void main() {
 
       expect(find.byType(Slider), findsNWidgets(11));
       expect(find.byType(Switch), findsOneWidget);
-      // The device-info link sits at the bottom of the list: scroll to it.
-      await tester.scrollUntilVisible(find.text(L10n.t('open_info')), 300,
-          scrollable: find.byType(Scrollable).first);
       expect(find.text(L10n.t('open_info')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
