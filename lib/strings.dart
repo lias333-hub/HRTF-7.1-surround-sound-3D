@@ -236,8 +236,10 @@ class L10n {
     'di_none': 'لا يوجد',
     'di_eq': 'المعادِل',
     'di_eq_bands': 'النطاقات الفعلية: {n}',
-    'di_eq_range': 'المدى: ±{r} ديسيبل',
-    'di_band': 'نطاق {i}: {lo}–{hi} هرتز (المركز {c})',
+    // LRI/PDI isolates (U+2066 .. U+2069) keep numbers and ranges left-to-right inside Arabic text
+    // (without them "30–120" is drawn as "120–30" and "±15" as "15±").
+    'di_eq_range': 'المدى: \u2066±{r}\u2069 ديسيبل',
+    'di_band': 'نطاق {i}: \u2066{lo}–{hi}\u2069 هرتز (المركز {c})',
     'di_effects': 'مؤثرات الصوت على هذا الجهاز',
     'di_cap': 'ماذا يستطيع هذا الهاتف',
     'di_copy': 'نسخ التقرير',
@@ -254,7 +256,7 @@ class L10n {
     'cap_yes': 'متاح',
     'cap_no': 'غير متاح',
     'cap_planned': 'مخطّط له',
-    'cap_needs': 'يحتاج أندرويد {v}+',
+    'cap_needs': 'يحتاج أندرويد \u2066{v}+\u2069',
     'cap_consent': 'ممكن بموافقة المستخدم',
     'set_title': 'الإعدادات',
     'set_language': 'اللغة',
