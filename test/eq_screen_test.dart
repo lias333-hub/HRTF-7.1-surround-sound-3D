@@ -25,6 +25,9 @@ void main() {
 
       expect(find.byType(Slider), findsNWidgets(11));
       expect(find.byType(Switch), findsOneWidget);
+      // The device-info link sits at the bottom of the list: scroll to it.
+      await tester.scrollUntilVisible(find.text(L10n.t('open_info')), 300,
+          scrollable: find.byType(Scrollable).first);
       expect(find.text(L10n.t('open_info')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
