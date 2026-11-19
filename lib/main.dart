@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-import 'eq_screen.dart';
+import 'shell.dart';
 import 'store.dart';
 import 'strings.dart';
 
+String _systemLangCode() => WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  L10n.lang = await Store.loadLang();
+  L10n.setPref(await Store.loadLang(), _systemLangCode());
   runApp(const DirectionalApp());
 }
 
@@ -17,10 +19,30 @@ class DirectionalApp extends StatefulWidget {
   State<DirectionalApp> createState() => _DirectionalAppState();
 }
 
-class _DirectionalAppState extends State<DirectionalApp> {
-  void _toggleLang() {
-    setState(() => L10n.lang = L10n.lang == 'ar' ? 'en' : 'ar');
-    Store.saveLang(L10n.lang);
+class _DirectionalAppState extends State<DirectionalApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// The phone's language changed while the app is open: follow it if the user chose "system language".
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    if (L10n.pref == 'system') {
+      setState(() => L10n.setPref('system', _systemLangCode()));
+    }
+  }
+
+  void _setPref(String pref) {
+    setState(() => L10n.setPref(pref, _systemLangCode()));
+    Store.saveLang(pref);
   }
 
   @override
@@ -39,7 +61,7 @@ class _DirectionalAppState extends State<DirectionalApp> {
         textDirection: L10n.rtl ? TextDirection.rtl : TextDirection.ltr,
         child: child!,
       ),
-      home: EqScreen(onToggleLang: _toggleLang),
+      home: HomeShell(lang: L10n.lang, onPrefChanged: _setPref),
     );
   }
 }

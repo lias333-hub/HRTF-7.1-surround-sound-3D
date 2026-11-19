@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'device_info_screen.dart';
 import 'engine.dart';
 import 'eq_model.dart';
 import 'store.dart';
 import 'strings.dart';
 
 class EqScreen extends StatefulWidget {
-  const EqScreen({super.key, required this.onToggleLang});
+  const EqScreen({super.key, required this.lang, required this.onLanguage});
 
-  final VoidCallback onToggleLang;
+  /// Only here so the screen rebuilds when the language changes.
+  final String lang;
+
+  /// Opens the language picker.
+  final VoidCallback onLanguage;
 
   @override
   State<EqScreen> createState() => _EqScreenState();
@@ -199,9 +204,10 @@ class _EqScreenState extends State<EqScreen> {
   String _statusText() {
     final info = _engine.info;
     if (_enabled && info != null) {
-      return L10n.t('bands_info')
-          .replaceAll('{n}', '${info.bands}')
-          .replaceAll('{r}', '${(info.maxMb / 100).round()}');
+      return L10n.f('status_ok', {
+        'n': '${info.bands}',
+        'r': '${(info.maxMb / 100).round()}',
+      });
     }
     return L10n.t('tip_global');
   }
@@ -237,9 +243,10 @@ class _EqScreenState extends State<EqScreen> {
       appBar: AppBar(
         title: Text(t('app_title')),
         actions: [
-          TextButton(
-            onPressed: widget.onToggleLang,
-            child: Text(L10n.lang == 'ar' ? 'EN' : 'ع'),
+          IconButton(
+            icon: const Icon(Icons.translate),
+            tooltip: t('set_language'),
+            onPressed: widget.onLanguage,
           ),
         ],
       ),
@@ -331,6 +338,17 @@ class _EqScreenState extends State<EqScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(t('note_bands'), style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const DeviceInfoScreen()),
+                    ),
+                    icon: const Icon(Icons.info_outline),
+                    label: Text(t('open_info')),
+                  ),
+                ),
               ],
             ),
     );

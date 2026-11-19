@@ -61,13 +61,32 @@ class Store {
     await p.setBool('enabled', v);
   }
 
+  /// 'system' or a language code. Old versions stored 'ar' or 'en', which stay valid.
   static Future<String> loadLang() async {
     final p = await SharedPreferences.getInstance();
-    return p.getString('lang') ?? 'ar';
+    return p.getString('lang') ?? 'system';
   }
 
   static Future<void> saveLang(String v) async {
     final p = await SharedPreferences.getInstance();
     await p.setString('lang', v);
+  }
+
+  /// Effects tab settings: {'bass': {'on': bool, 'v': int}, ...}.
+  static Future<Map<String, dynamic>> loadFx() async {
+    final p = await SharedPreferences.getInstance();
+    try {
+      final raw = p.getString('fx');
+      if (raw != null) {
+        final m = jsonDecode(raw);
+        if (m is Map<String, dynamic>) return m;
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  static Future<void> saveFx(Map<String, dynamic> m) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('fx', jsonEncode(m));
   }
 }

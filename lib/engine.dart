@@ -53,3 +53,51 @@ class EqEngine {
 
   Future<void> stop() => _ch.invokeMethod<void>('stop');
 }
+
+/// Result of trying to create one built-in effect (bass boost, virtualizer, loudness).
+class FxStatus {
+  const FxStatus({required this.ok, this.strengthSupported = true, this.error});
+
+  final bool ok;
+  final bool strengthSupported;
+  final String? error;
+
+  factory FxStatus.fromMap(Map<dynamic, dynamic> m) => FxStatus(
+        ok: m['ok'] == true,
+        strengthSupported: m['strengthSupported'] != false,
+        error: m['error'] as String?,
+      );
+}
+
+/// Bass boost / virtualizer / loudness enhancer (android.media.audiofx), keys: bass, virt, loud.
+class FxEngine {
+  static const _ch = MethodChannel('directional/eq');
+  static const keys = ['bass', 'virt', 'loud'];
+
+  /// Creates the effects (disabled) and reports which ones the device accepted.
+  Future<Map<String, FxStatus>> start() async {
+    final m = await _ch.invokeMethod<Map<dynamic, dynamic>>('fxStart');
+    return {
+      for (final k in keys)
+        k: FxStatus.fromMap((m?[k] as Map?) ?? const {'ok': false}),
+    };
+  }
+
+  /// [value]: strength 0..1000 for bass/virt, gain in millibels 0..1500 for loud.
+  Future<void> set(String name, bool on, int value) => _ch
+      .invokeMethod<void>('fxSet', {'name': name, 'on': on, 'value': value});
+
+  Future<void> stop() => _ch.invokeMethod<void>('fxStop');
+}
+
+/// Plays a short stereo test tone on one channel or both.
+class ToneEngine {
+  static const _ch = MethodChannel('directional/eq');
+
+  /// [channel]: 'left', 'right' or 'both'.
+  Future<void> play(String channel, double freq, double seconds) =>
+      _ch.invokeMethod<void>(
+          'tone', {'channel': channel, 'freq': freq, 'seconds': seconds});
+
+  Future<void> stop() => _ch.invokeMethod<void>('toneStop');
+}
