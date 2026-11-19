@@ -5,7 +5,8 @@ import 'engine.dart';
 // Effect type UUIDs as reported by AudioEffect.queryEffects() (lower case).
 const kFxEqualizer = '0bed4300-ddd6-11db-8f34-0002a5d5c51b';
 const kFxBassBoost = '0634f220-ddd4-11db-a0fc-0002a5d5c51b';
-const kFxVirtualizer = '37cc2c00-dddd-11db-8bc1-0002a5d5c51b';
+// Checked against the Android 14 emulator's dumpsys (the "..8bc1.." variant I first wrote from memory was wrong).
+const kFxVirtualizer = '37cc2c00-dddd-11db-8577-0002a5d5c51b';
 const kFxLoudness = 'fe3199be-aed0-413f-87bb-11260eb63cf1';
 
 class EffectEntry {

@@ -112,6 +112,7 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(child: Text(L10n.t('cap_${c.key}'))),
+          const SizedBox(width: 12),
           Flexible(
             child: Text(_capText(c), style: TextStyle(color: color), textAlign: TextAlign.end),
           ),
