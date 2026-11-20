@@ -554,8 +554,14 @@ object EngineHub {
             o.put("gains", JSONArray(dpGains))
             o.put("preamp", dpPreamp)
             o.put("fxActive", fxActive)
-            o.put("fxOn", JSONObject(fxOn))
-            o.put("fxVal", JSONObject(fxVal))
+            val on = JSONObject()
+            val v = JSONObject()
+            for (k in fxOn.keys) {
+                on.put(k, fxOn[k] ?: false)
+                v.put(k, fxVal[k] ?: 0)
+            }
+            o.put("fxOn", on)
+            o.put("fxVal", v)
             c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("state", o.toString()).apply()
         } catch (ignored: Exception) {
         }
