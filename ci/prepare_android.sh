@@ -13,7 +13,7 @@ fi
 
 pkg_dir=android/app/src/main/kotlin/com/directionalaudio/directional_audio
 mkdir -p "$pkg_dir"
-cp native/MainActivity.kt "$pkg_dir/MainActivity.kt"
+cp native/*.kt "$pkg_dir/"
 cp native/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
 
 flutter pub get

@@ -1,56 +1,87 @@
 package com.directionalaudio.directional_audio
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.audiofx.AudioEffect
-import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
-import android.media.audiofx.LoudnessEnhancer
-import android.media.audiofx.Virtualizer
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
+/**
+ * Thin bridge between Flutter and [EngineHub]. All live audio effects belong to the hub (not to the
+ * activity), so they keep working when the screen is closed and the activity is destroyed.
+ */
 class MainActivity : FlutterActivity() {
     companion object {
-        // Kept outside the activity so the effects survive the activity being destroyed
-        // (they still die if Android kills the whole process; a foreground service is a later step).
-        private var eq: Equalizer? = null
-        private var bass: BassBoost? = null
-        private var virt: Virtualizer? = null
-        private var loud: LoudnessEnhancer? = null
+        private const val NOTIF_REQ = 4201
 
         // Each new test tone gets a new token; an older tone stops when it sees the token changed.
         @Volatile
         private var toneToken = 0
     }
 
+    private var pendingNotif: MethodChannel.Result? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        EngineHub.init(applicationContext)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "directional/status")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    EngineHub.sink = events
+                    EngineHub.emit()
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    EngineHub.sink = null
+                }
+            })
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "directional/eq")
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
-                        "start" -> result.success(start(call.argument<Int>("session") ?: 0))
+                        // --- system equalizer
+                        "start" -> result.success(EngineHub.startSystem(call.argument<Int>("session") ?: 0))
                         "setLevels" -> {
-                            setLevels(call.argument<List<Int>>("levels") ?: emptyList())
+                            EngineHub.setSysLevels(call.argument<List<Int>>("levels") ?: emptyList())
                             result.success(null)
                         }
-                        "setEnabled" -> {
-                            eq?.enabled = call.argument<Boolean>("on") ?: false
-                            result.success(eq?.enabled ?: false)
+                        // --- Dynamics Processing equalizer
+                        "dpProbe" -> result.success(EngineHub.probeDynamics())
+                        "dpStart" -> result.success(
+                            EngineHub.startDynamics(call.argument<List<Double>>("centers") ?: emptyList())
+                        )
+                        "dpGains" -> {
+                            EngineHub.setDpGains(
+                                call.argument<List<Double>>("gains") ?: emptyList(),
+                                call.argument<Double>("preamp") ?: 0.0
+                            )
+                            result.success(null)
                         }
+                        // --- shared
+                        "setEnabled" -> result.success(EngineHub.setEqEnabled(call.argument<Boolean>("on") ?: false))
                         "stop" -> {
-                            releaseEq()
+                            EngineHub.stopEq()
                             result.success(null)
                         }
                         "deviceInfo" -> result.success(deviceInfo())
-                        "fxStart" -> result.success(fxStart())
+                        // --- bass / virtualizer / loudness
+                        "fxStart" -> result.success(EngineHub.fxStart())
                         "fxSet" -> {
-                            fxSet(
+                            EngineHub.fxSet(
                                 call.argument<String>("name") ?: "",
                                 call.argument<Boolean>("on") ?: false,
                                 call.argument<Int>("value") ?: 0
@@ -58,9 +89,33 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                         "fxStop" -> {
-                            fxStop()
+                            EngineHub.fxStop()
                             result.success(null)
                         }
+                        // --- foreground service
+                        "svcStart" -> {
+                            startEngineService(
+                                call.argument<String>("title") ?: "",
+                                call.argument<String>("text") ?: "",
+                                call.argument<String>("stop") ?: ""
+                            )
+                            result.success(null)
+                        }
+                        "svcStop" -> {
+                            EngineHub.setWanted(false)
+                            stopService(Intent(this, EngineService::class.java))
+                            result.success(null)
+                        }
+                        "status" -> result.success(EngineHub.status())
+                        // --- permissions / battery
+                        "notifStatus" -> result.success(notifStatus())
+                        "notifRequest" -> requestNotif(result)
+                        "batteryIgnored" -> result.success(batteryIgnored())
+                        "batteryRequest" -> {
+                            requestBattery()
+                            result.success(null)
+                        }
+                        // --- test tone
                         "tone" -> {
                             playTone(
                                 call.argument<String>("channel") ?: "both",
@@ -81,55 +136,64 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    // ---------------------------------------------------------------- equalizer
+    // ---------------------------------------------------------------- service, permissions, battery
 
-    private fun eqMap(e: Equalizer): Map<String, Any> {
-        val n = e.numberOfBands.toInt()
-        val range = e.bandLevelRange
-        val centers = ArrayList<Double>()
-        val lows = ArrayList<Double>()
-        val highs = ArrayList<Double>()
-        for (i in 0 until n) {
-            val b = i.toShort()
-            centers.add(e.getCenterFreq(b) / 1000.0)
-            val r = e.getBandFreqRange(b)
-            lows.add(r[0] / 1000.0)
-            highs.add(r[1] / 1000.0)
-        }
-        return mapOf(
-            "bands" to n,
-            "minLevel" to range[0].toInt(),
-            "maxLevel" to range[1].toInt(),
-            "centers" to centers,
-            "lows" to lows,
-            "highs" to highs
-        )
+    private fun startEngineService(title: String, text: String, stop: String) {
+        EngineHub.setWanted(true)
+        val i = Intent(this, EngineService::class.java)
+            .putExtra("title", title)
+            .putExtra("text", text)
+            .putExtra("stop", stop)
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
     }
 
-    private fun start(session: Int): Map<String, Any> {
-        releaseEq()
-        val e = Equalizer(0, session)
-        eq = e
-        e.enabled = false
-        return eqMap(e)
-    }
-
-    private fun setLevels(levels: List<Int>) {
-        val e = eq ?: return
-        val range = e.bandLevelRange
-        val n = e.numberOfBands.toInt()
-        for ((i, l) in levels.withIndex()) {
-            if (i >= n) break
-            e.setBandLevel(i.toShort(), l.coerceIn(range[0].toInt(), range[1].toInt()).toShort())
+    // "na" below Android 13 (no runtime permission), otherwise "granted" or "denied".
+    private fun notifStatus(): String {
+        if (Build.VERSION.SDK_INT < 33) return "na"
+        return if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            "granted"
+        } else {
+            "denied"
         }
     }
 
-    private fun releaseEq() {
+    private fun requestNotif(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < 33 || notifStatus() == "granted") {
+            result.success(notifStatus())
+            return
+        }
+        pendingNotif?.success("denied")
+        pendingNotif = result
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIF_REQ)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NOTIF_REQ) {
+            val r = pendingNotif
+            pendingNotif = null
+            r?.success(notifStatus())
+        }
+    }
+
+    private fun batteryIgnored(): Boolean {
+        if (Build.VERSION.SDK_INT < 23) return true
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestBattery() {
+        if (Build.VERSION.SDK_INT < 23) return
         try {
-            eq?.release()
-        } catch (ignored: Exception) {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (ignored: Exception) {
+            }
         }
-        eq = null
     }
 
     // ---------------------------------------------------------------- device info
@@ -166,13 +230,13 @@ class MainActivity : FlutterActivity() {
         var eqInfo: Map<String, Any>? = null
         var eqError: String? = null
         try {
-            val active = eq
+            val active = EngineHub.systemEqMap()
             if (active != null) {
-                eqInfo = eqMap(active)
+                eqInfo = active
             } else {
                 val probe = Equalizer(0, 0)
                 try {
-                    eqInfo = eqMap(probe)
+                    eqInfo = EngineHub.eqMap(probe)
                 } finally {
                     probe.release()
                 }
@@ -199,92 +263,11 @@ class MainActivity : FlutterActivity() {
             "outputs" to outs,
             "effects" to fx,
             "eq" to eqInfo,
-            "eqError" to eqError
+            "eqError" to eqError,
+            "dynamics" to EngineHub.probeDynamics(),
+            "notif" to notifStatus(),
+            "batteryIgnored" to batteryIgnored()
         )
-    }
-
-    // ---------------------------------------------------------------- bass boost / virtualizer / loudness
-
-    private fun failure(e: Exception): Map<String, Any> =
-        mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName))
-
-    private fun fxStart(): Map<String, Any> {
-        fxStop()
-        val out = HashMap<String, Any>()
-
-        out["bass"] = try {
-            val b = BassBoost(0, 0)
-            bass = b
-            b.enabled = false
-            mapOf("ok" to true, "strengthSupported" to b.strengthSupported)
-        } catch (e: Exception) {
-            failure(e)
-        }
-
-        out["virt"] = try {
-            val v = Virtualizer(0, 0)
-            virt = v
-            v.enabled = false
-            mapOf("ok" to true, "strengthSupported" to v.strengthSupported)
-        } catch (e: Exception) {
-            failure(e)
-        }
-
-        out["loud"] = try {
-            val l = LoudnessEnhancer(0)
-            loud = l
-            l.enabled = false
-            mapOf("ok" to true, "strengthSupported" to true)
-        } catch (e: Exception) {
-            failure(e)
-        }
-
-        return out
-    }
-
-    // value: strength 0..1000 for bass/virt; gain in millibels for loud.
-    private fun fxSet(name: String, on: Boolean, value: Int) {
-        when (name) {
-            "bass" -> {
-                val b = bass
-                if (b != null) {
-                    if (b.strengthSupported) b.setStrength(value.coerceIn(0, 1000).toShort())
-                    b.enabled = on
-                }
-            }
-            "virt" -> {
-                val v = virt
-                if (v != null) {
-                    if (v.strengthSupported) v.setStrength(value.coerceIn(0, 1000).toShort())
-                    v.enabled = on
-                }
-            }
-            "loud" -> {
-                val l = loud
-                if (l != null) {
-                    l.setTargetGain(value.coerceIn(0, 1500))
-                    l.enabled = on
-                }
-            }
-        }
-    }
-
-    private fun fxStop() {
-        try {
-            bass?.release()
-        } catch (ignored: Exception) {
-        }
-        try {
-            virt?.release()
-        } catch (ignored: Exception) {
-        }
-        try {
-            loud?.release()
-        } catch (ignored: Exception) {
-        }
-        bass = null
-        virt = null
-        loud = null
     }
 
     // ---------------------------------------------------------------- test tone

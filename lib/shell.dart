@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'effects_screen.dart';
+import 'engine.dart';
 import 'eq_screen.dart';
 import 'language_sheet.dart';
 import 'settings_screen.dart';
@@ -21,6 +22,13 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // If the user had the background service on and Android killed the app, bring it back now.
+    EngineApi.resumeIfWanted();
+  }
 
   Future<void> _openLanguage() async {
     final p = await showLanguageSheet(context);

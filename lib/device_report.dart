@@ -90,6 +90,8 @@ class DeviceReport {
     required this.effects,
     required this.eq,
     required this.eqError,
+    this.dynOk,
+    this.dynError,
   });
 
   final String manufacturer;
@@ -104,6 +106,11 @@ class DeviceReport {
   final DeviceInfo? eq;
   final String? eqError;
 
+  /// Whether a Dynamics Processing effect could be created on the global mix (null = not reported).
+  /// Creating one does not prove it is audible: that is checked by ear.
+  final bool? dynOk;
+  final String? dynError;
+
   static const _ch = MethodChannel('directional/eq');
 
   static Future<DeviceReport> load() async {
@@ -115,6 +122,7 @@ class DeviceReport {
     List<T> list<T>(String k, T Function(dynamic) f) =>
         ((m[k] as List?) ?? const []).map(f).toList();
     final eqRaw = m['eq'];
+    final dynRaw = m['dynamics'];
     return DeviceReport(
       manufacturer: '${m['manufacturer'] ?? ''}',
       model: '${m['model'] ?? ''}',
@@ -138,6 +146,8 @@ class DeviceReport {
       ),
       eq: eqRaw is Map ? DeviceInfo.fromMap(eqRaw) : null,
       eqError: m['eqError'] as String?,
+      dynOk: dynRaw is Map ? dynRaw['ok'] == true : null,
+      dynError: dynRaw is Map ? dynRaw['error'] as String? : null,
     );
   }
 
@@ -156,9 +166,9 @@ class DeviceReport {
         Capability('bass', hasEffect(kFxBassBoost) ? CapState.yes : CapState.no),
         Capability('virt', hasEffect(kFxVirtualizer) ? CapState.yes : CapState.no),
         Capability('loud', hasEffect(kFxLoudness) ? CapState.yes : CapState.no),
-        sdk >= 28
-            ? const Capability('dyn', CapState.yes)
-            : const Capability('dyn', CapState.needs, 9),
+        sdk < 28
+            ? const Capability('dyn', CapState.needs, 9)
+            : Capability('dyn', dynOk == false ? CapState.no : CapState.yes),
         sdk >= 29
             ? const Capability('capture', CapState.consent)
             : const Capability('capture', CapState.needs, 10),
@@ -185,6 +195,10 @@ class DeviceReport {
       }
     } else {
       b.writeln('Equalizer: unavailable${eqError == null ? '' : ' ($eqError)'}');
+    }
+    if (dynOk != null) {
+      b.writeln('Dynamics Processing: ${dynOk! ? 'can be created' : 'failed'}'
+          '${dynError == null ? '' : ' ($dynError)'}');
     }
     b.writeln('Effects (${effects.length}):');
     for (final f in effects) {

@@ -162,6 +162,49 @@ class L10n {
     'set_limits':
         '• Works as a device-level effect; some phones ignore it.\n• Not real HRTF yet: that comes with the in-app player.\n• Android may stop the effect when it closes the app.',
     'set_lang_title': 'Choose language',
+    'eq_type': 'Equalizer type',
+    'type_system': 'System',
+    'type_dynamics': 'Dynamics',
+    'type_auto': 'Auto',
+    'type_hint':
+        'System: works on every phone but often has only 5 bands. Dynamics (Android 9+): 10 real bands plus a limiter; newer and still being tested. Auto: Dynamics if the phone accepts it, otherwise System.',
+    'status_dyn':
+        'Dynamics Processing is active · {n} real bands + limiter. Check by ear that the sound changes.',
+    'open_engine': 'Engine & background',
+    'tool_engine': 'Sound engine',
+    'tool_engine_sub':
+        'Background service, notification, battery and live status',
+    'eng_title': 'Sound engine',
+    'eng_service': 'Keep running in the background',
+    'eng_service_sub':
+        'Shows a notification so Android is less likely to stop the effects, and re-applies them when headphones or Bluetooth connect or disconnect.',
+    'eng_status': 'Status',
+    'eng_svc_on': 'Service: running',
+    'eng_svc_off': 'Service: stopped',
+    'eng_eq_none': 'Equalizer: not created',
+    'eng_eq_on': 'Equalizer: {k} · {n} bands · on',
+    'eng_eq_off': 'Equalizer: {k} · {n} bands · off',
+    'eng_fx_on': 'Effects tab: active',
+    'eng_fx_off': 'Effects tab: not started',
+    'eng_out': 'Current outputs',
+    'eng_err': 'Last error: {e}',
+    'eng_notif': 'Notifications',
+    'eng_notif_ok': 'Allowed',
+    'eng_notif_no':
+        'Not allowed: Android may hide the notification, the service still runs',
+    'eng_allow': 'Allow',
+    'eng_battery': 'Battery restrictions',
+    'eng_battery_ok': 'Unrestricted: good',
+    'eng_battery_no':
+        'Restricted: some phones stop background apps. Choose "Unrestricted" or "Don\'t optimize".',
+    'eng_fix': 'Fix',
+    'eng_note':
+        'The service does not process audio by itself. It keeps the app alive and rebuilds the effects after an output change. Whether other apps are affected still depends on your phone.',
+    'notif_title': 'Directional Audio',
+    'notif_text': 'Sound engine is running',
+    'notif_stop': 'Stop',
+    'kind_system': 'System equalizer',
+    'kind_dynamics': 'Dynamics Processing',
   };
 
   static const Map<String, String> _ar = {
@@ -267,6 +310,48 @@ class L10n {
     'set_limits':
         '• يعمل كمؤثر على مستوى الجهاز، وبعض الهواتف تتجاهله.\n• ليس HRTF حقيقياً بعد: ذلك يأتي مع المشغّل داخل التطبيق.\n• قد يوقف أندرويد المؤثر عند إغلاق التطبيق.',
     'set_lang_title': 'اختر اللغة',
+    'eq_type': 'نوع المعادِل',
+    'type_system': 'النظام',
+    'type_dynamics': 'ديناميكي',
+    'type_auto': 'تلقائي',
+    'type_hint':
+        'النظام: يعمل على كل الهواتف لكن غالباً بـ 5 نطاقات فقط. الديناميكي (أندرويد \u20669+\u2069): 10 نطاقات حقيقية مع محدّد (Limiter)؛ أحدث وما زال قيد الاختبار. تلقائي: الديناميكي إذا قبله الهاتف، وإلا النظام.',
+    'status_dyn':
+        'المعالجة الديناميكية فعّالة · {n} نطاقات حقيقية مع محدّد. تأكّد بالأذن أن الصوت تغيّر.',
+    'open_engine': 'المحرّك والتشغيل بالخلفية',
+    'tool_engine': 'محرّك الصوت',
+    'tool_engine_sub': 'خدمة الخلفية، الإشعار، البطارية، والحالة المباشرة',
+    'eng_title': 'محرّك الصوت',
+    'eng_service': 'إبقاء المحرّك شغّالاً بالخلفية',
+    'eng_service_sub':
+        'يعرض إشعاراً حتى يقلّ احتمال أن يوقف أندرويد المؤثرات، ويعيد تطبيقها عند توصيل أو فصل السماعة أو البلوتوث.',
+    'eng_status': 'الحالة',
+    'eng_svc_on': 'الخدمة: شغّالة',
+    'eng_svc_off': 'الخدمة: متوقفة',
+    'eng_eq_none': 'المعادِل: غير منشأ',
+    'eng_eq_on': 'المعادِل: {k} · {n} نطاق · مفعّل',
+    'eng_eq_off': 'المعادِل: {k} · {n} نطاق · معطّل',
+    'eng_fx_on': 'تبويب المؤثرات: نشط',
+    'eng_fx_off': 'تبويب المؤثرات: لم يبدأ',
+    'eng_out': 'المخارج الحالية',
+    'eng_err': 'آخر خطأ: {e}',
+    'eng_notif': 'الإشعارات',
+    'eng_notif_ok': 'مسموح',
+    'eng_notif_no':
+        'غير مسموح: قد يخفي أندرويد الإشعار، لكن الخدمة تبقى شغّالة',
+    'eng_allow': 'سماح',
+    'eng_battery': 'قيود البطارية',
+    'eng_battery_ok': 'بدون قيود: ممتاز',
+    'eng_battery_no':
+        'مقيّدة: بعض الهواتف توقف التطبيقات بالخلفية. اختر «بدون قيود» أو «عدم التحسين».',
+    'eng_fix': 'تعديل',
+    'eng_note':
+        'الخدمة لا تعالج الصوت بنفسها؛ تُبقي التطبيق حياً وتعيد بناء المؤثرات بعد أي تغيير في المخرج. تأثيرها على التطبيقات الأخرى يبقى مرتبطاً بهاتفك.',
+    'notif_title': 'Directional Audio',
+    'notif_text': 'محرّك الصوت شغّال',
+    'notif_stop': 'إيقاف',
+    'kind_system': 'معادِل النظام',
+    'kind_dynamics': 'المعالجة الديناميكية',
   };
 
   static const Map<String, String> _fr = {
@@ -371,6 +456,49 @@ class L10n {
     'set_limits':
         "• Fonctionne comme effet au niveau de l'appareil ; certains téléphones l'ignorent.\n• Pas encore de vrai HRTF : il viendra avec le lecteur intégré.\n• Android peut arrêter l'effet quand il ferme l'application.",
     'set_lang_title': 'Choisir la langue',
+    'eq_type': 'Type d\'égaliseur',
+    'type_system': 'Système',
+    'type_dynamics': 'Dynamique',
+    'type_auto': 'Auto',
+    'type_hint':
+        'Système : fonctionne sur tous les téléphones mais n\'a souvent que 5 bandes. Dynamique (Android 9+) : 10 vraies bandes plus un limiteur ; plus récent et encore en test. Auto : Dynamique si le téléphone l\'accepte, sinon Système.',
+    'status_dyn':
+        'Dynamics Processing actif · {n} vraies bandes + limiteur. Vérifiez à l\'oreille que le son change.',
+    'open_engine': 'Moteur et arrière-plan',
+    'tool_engine': 'Moteur audio',
+    'tool_engine_sub':
+        'Service en arrière-plan, notification, batterie et état en direct',
+    'eng_title': 'Moteur audio',
+    'eng_service': 'Garder actif en arrière-plan',
+    'eng_service_sub':
+        'Affiche une notification pour qu\'Android arrête moins souvent les effets, et les réapplique quand un casque ou le Bluetooth se connecte ou se déconnecte.',
+    'eng_status': 'État',
+    'eng_svc_on': 'Service : actif',
+    'eng_svc_off': 'Service : arrêté',
+    'eng_eq_none': 'Égaliseur : non créé',
+    'eng_eq_on': 'Égaliseur : {k} · {n} bandes · activé',
+    'eng_eq_off': 'Égaliseur : {k} · {n} bandes · désactivé',
+    'eng_fx_on': 'Onglet Effets : actif',
+    'eng_fx_off': 'Onglet Effets : non démarré',
+    'eng_out': 'Sorties actuelles',
+    'eng_err': 'Dernière erreur : {e}',
+    'eng_notif': 'Notifications',
+    'eng_notif_ok': 'Autorisées',
+    'eng_notif_no':
+        'Non autorisées : Android peut masquer la notification, le service continue',
+    'eng_allow': 'Autoriser',
+    'eng_battery': 'Restrictions de batterie',
+    'eng_battery_ok': 'Sans restriction : parfait',
+    'eng_battery_no':
+        'Restreint : certains téléphones arrêtent les applis en arrière-plan. Choisissez « Sans restriction » ou « Ne pas optimiser ».',
+    'eng_fix': 'Régler',
+    'eng_note':
+        'Le service ne traite pas le son lui-même. Il garde l\'application en vie et reconstruit les effets après un changement de sortie. L\'effet sur les autres applis dépend toujours de votre téléphone.',
+    'notif_title': 'Directional Audio',
+    'notif_text': 'Le moteur audio est actif',
+    'notif_stop': 'Arrêter',
+    'kind_system': 'Égaliseur système',
+    'kind_dynamics': 'Dynamics Processing',
   };
 
   static const Map<String, String> _es = {
@@ -476,6 +604,49 @@ class L10n {
     'set_limits':
         '• Funciona como efecto a nivel de dispositivo; algunos teléfonos lo ignoran.\n• Aún no es HRTF real: llegará con el reproductor integrado.\n• Android puede detener el efecto al cerrar la app.',
     'set_lang_title': 'Elegir idioma',
+    'eq_type': 'Tipo de ecualizador',
+    'type_system': 'Sistema',
+    'type_dynamics': 'Dinámico',
+    'type_auto': 'Auto',
+    'type_hint':
+        'Sistema: funciona en todos los teléfonos, pero a menudo solo tiene 5 bandas. Dinámico (Android 9+): 10 bandas reales más un limitador; más nuevo y aún en pruebas. Auto: Dinámico si el teléfono lo acepta; si no, Sistema.',
+    'status_dyn':
+        'Dynamics Processing activo · {n} bandas reales + limitador. Comprueba de oído que el sonido cambia.',
+    'open_engine': 'Motor y segundo plano',
+    'tool_engine': 'Motor de audio',
+    'tool_engine_sub':
+        'Servicio en segundo plano, notificación, batería y estado en vivo',
+    'eng_title': 'Motor de audio',
+    'eng_service': 'Mantener activo en segundo plano',
+    'eng_service_sub':
+        'Muestra una notificación para que Android detenga menos los efectos, y los vuelve a aplicar cuando se conectan o desconectan los auriculares o el Bluetooth.',
+    'eng_status': 'Estado',
+    'eng_svc_on': 'Servicio: activo',
+    'eng_svc_off': 'Servicio: detenido',
+    'eng_eq_none': 'Ecualizador: no creado',
+    'eng_eq_on': 'Ecualizador: {k} · {n} bandas · activado',
+    'eng_eq_off': 'Ecualizador: {k} · {n} bandas · desactivado',
+    'eng_fx_on': 'Pestaña Efectos: activa',
+    'eng_fx_off': 'Pestaña Efectos: sin iniciar',
+    'eng_out': 'Salidas actuales',
+    'eng_err': 'Último error: {e}',
+    'eng_notif': 'Notificaciones',
+    'eng_notif_ok': 'Permitidas',
+    'eng_notif_no':
+        'No permitidas: Android puede ocultar la notificación, pero el servicio sigue activo',
+    'eng_allow': 'Permitir',
+    'eng_battery': 'Restricciones de batería',
+    'eng_battery_ok': 'Sin restricciones: perfecto',
+    'eng_battery_no':
+        'Restringida: algunos teléfonos detienen las apps en segundo plano. Elige «Sin restricciones» o «No optimizar».',
+    'eng_fix': 'Ajustar',
+    'eng_note':
+        'El servicio no procesa el audio por sí mismo. Mantiene la app viva y reconstruye los efectos tras un cambio de salida. Que afecte a otras apps sigue dependiendo de tu teléfono.',
+    'notif_title': 'Directional Audio',
+    'notif_text': 'El motor de audio está activo',
+    'notif_stop': 'Detener',
+    'kind_system': 'Ecualizador del sistema',
+    'kind_dynamics': 'Dynamics Processing',
   };
 
   static const Map<String, String> _tr = {
@@ -581,5 +752,47 @@ class L10n {
     'set_limits':
         '• Cihaz düzeyinde bir efekt olarak çalışır; bazı telefonlar bunu yok sayar.\n• Henüz gerçek HRTF değil: uygulama içi oynatıcıyla gelecek.\n• Android uygulamayı kapattığında efekti durdurabilir.',
     'set_lang_title': 'Dil seçin',
+    'eq_type': 'Ekolayzer türü',
+    'type_system': 'Sistem',
+    'type_dynamics': 'Dinamik',
+    'type_auto': 'Otomatik',
+    'type_hint':
+        'Sistem: her telefonda çalışır ama çoğu zaman yalnızca 5 bandı vardır. Dinamik (Android 9+): 10 gerçek bant ve bir sınırlayıcı; daha yeni ve hâlâ test aşamasında. Otomatik: telefon kabul ederse Dinamik, aksi halde Sistem.',
+    'status_dyn':
+        'Dynamics Processing etkin · {n} gerçek bant + sınırlayıcı. Sesin değiştiğini kulakla kontrol edin.',
+    'open_engine': 'Motor ve arka plan',
+    'tool_engine': 'Ses motoru',
+    'tool_engine_sub': 'Arka plan hizmeti, bildirim, pil ve canlı durum',
+    'eng_title': 'Ses motoru',
+    'eng_service': 'Arka planda çalışmaya devam et',
+    'eng_service_sub':
+        'Android\'in efektleri durdurma ihtimalini azaltmak için bir bildirim gösterir; kulaklık veya Bluetooth takılıp çıkarıldığında efektleri yeniden uygular.',
+    'eng_status': 'Durum',
+    'eng_svc_on': 'Hizmet: çalışıyor',
+    'eng_svc_off': 'Hizmet: durdu',
+    'eng_eq_none': 'Ekolayzer: oluşturulmadı',
+    'eng_eq_on': 'Ekolayzer: {k} · {n} bant · açık',
+    'eng_eq_off': 'Ekolayzer: {k} · {n} bant · kapalı',
+    'eng_fx_on': 'Efektler sekmesi: etkin',
+    'eng_fx_off': 'Efektler sekmesi: başlatılmadı',
+    'eng_out': 'Geçerli çıkışlar',
+    'eng_err': 'Son hata: {e}',
+    'eng_notif': 'Bildirimler',
+    'eng_notif_ok': 'İzin verildi',
+    'eng_notif_no':
+        'İzin yok: Android bildirimi gizleyebilir, hizmet yine de çalışır',
+    'eng_allow': 'İzin ver',
+    'eng_battery': 'Pil kısıtlamaları',
+    'eng_battery_ok': 'Kısıtlama yok: iyi',
+    'eng_battery_no':
+        'Kısıtlı: bazı telefonlar arka plan uygulamalarını durdurur. "Kısıtlama yok" veya "Optimize etme" seçin.',
+    'eng_fix': 'Düzelt',
+    'eng_note':
+        'Hizmet sesi kendisi işlemez. Uygulamayı canlı tutar ve çıkış değişince efektleri yeniden kurar. Diğer uygulamaları etkilemesi yine telefonunuza bağlıdır.',
+    'notif_title': 'Directional Audio',
+    'notif_text': 'Ses motoru çalışıyor',
+    'notif_stop': 'Durdur',
+    'kind_system': 'Sistem ekolayzeri',
+    'kind_dynamics': 'Dynamics Processing',
   };
 }

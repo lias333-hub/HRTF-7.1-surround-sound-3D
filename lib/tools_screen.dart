@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'device_info_screen.dart';
 import 'engine.dart';
+import 'engine_screen.dart';
 import 'strings.dart';
 
 /// Diagnostics: device info and a left/right channel test (to check for leakage by ear).
@@ -89,6 +90,16 @@ class _ToolsScreenState extends State<ToolsScreen> {
               subtitle: Text(t('tool_info_sub')),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: (_) => const DeviceInfoScreen()),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.settings_input_component),
+              title: Text(t('tool_engine')),
+              subtitle: Text(t('tool_engine_sub')),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const EngineScreen()),
               ),
             ),
           ),

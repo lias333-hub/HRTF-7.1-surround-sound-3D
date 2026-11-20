@@ -61,6 +61,18 @@ class Store {
     await p.setBool('enabled', v);
   }
 
+  /// Equalizer back end: 'system' (default, works everywhere), 'dynamics' or 'auto'.
+  static Future<String> loadBackend() async {
+    final p = await SharedPreferences.getInstance();
+    final v = p.getString('backend');
+    return (v == 'dynamics' || v == 'auto') ? v! : 'system';
+  }
+
+  static Future<void> saveBackend(String v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('backend', v);
+  }
+
   /// 'system' or a language code. Old versions stored 'ar' or 'en', which stay valid.
   static Future<String> loadLang() async {
     final p = await SharedPreferences.getInstance();

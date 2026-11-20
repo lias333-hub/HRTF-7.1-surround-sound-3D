@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'device_info_screen.dart';
 import 'engine.dart';
+import 'engine_screen.dart';
 import 'eq_model.dart';
 import 'store.dart';
 import 'strings.dart';
@@ -28,6 +29,7 @@ class _EqScreenState extends State<EqScreen> {
   bool _enabled = false;
   bool _loaded = false;
   String? _error;
+  String _pref = 'system';
 
   List<EqProfile> get _all => [...kBuiltInProfiles, ..._user];
 
@@ -39,6 +41,7 @@ class _EqScreenState extends State<EqScreen> {
 
   Future<void> _init() async {
     final s = await Store.load();
+    final pref = await Store.loadBackend();
     if (!mounted) return;
     setState(() {
       _user = s.user;
@@ -46,6 +49,7 @@ class _EqScreenState extends State<EqScreen> {
       _selected = _all.any((e) => e.name == s.selected)
           ? s.selected
           : 'builtin:flat';
+      _pref = pref;
       _loaded = true;
     });
     if (s.enabled) await _setEnabled(true);
@@ -54,7 +58,7 @@ class _EqScreenState extends State<EqScreen> {
   Future<void> _setEnabled(bool on) async {
     try {
       if (on) {
-        await _engine.start();
+        await _engine.start(pref: _pref);
         await _engine.setEnabled(true);
         _enabled = true;
         await _apply();
@@ -73,20 +77,25 @@ class _EqScreenState extends State<EqScreen> {
     Store.saveEnabled(_enabled);
   }
 
+  /// Switching the back end while the equalizer is on rebuilds it with the new one.
+  Future<void> _setPref(String p) async {
+    if (p == _pref) return;
+    setState(() => _pref = p);
+    await Store.saveBackend(p);
+    if (_enabled) {
+      try {
+        await _engine.stop();
+      } catch (_) {}
+      await _setEnabled(true);
+    } else if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> _apply() async {
-    final info = _engine.info;
-    if (info == null || !_enabled) return;
-    final levels = deviceLevels(
-      gains: _working.gains,
-      preamp: _working.preamp,
-      lows: info.lows,
-      highs: info.highs,
-      centers: info.centers,
-      minMb: info.minMb,
-      maxMb: info.maxMb,
-    );
+    if (!_enabled) return;
     try {
-      await _engine.setLevels(levels);
+      await _engine.apply(_working);
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = e.message ?? e.code);
     }
@@ -203,6 +212,9 @@ class _EqScreenState extends State<EqScreen> {
 
   String _statusText() {
     final info = _engine.info;
+    if (_enabled && _engine.backend == EqBackend.dynamics) {
+      return L10n.f('status_dyn', {'n': '${_engine.bands}'});
+    }
     if (_enabled && info != null) {
       return L10n.f('status_ok', {
         'n': '${info.bands}',
@@ -210,6 +222,32 @@ class _EqScreenState extends State<EqScreen> {
       });
     }
     return L10n.t('tip_global');
+  }
+
+  Widget _typePicker() {
+    final t = L10n.t;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(t('eq_type'), style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<String>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(value: 'system', label: Text(t('type_system'))),
+              ButtonSegment(value: 'dynamics', label: Text(t('type_dynamics'))),
+              ButtonSegment(value: 'auto', label: Text(t('type_auto'))),
+            ],
+            selected: {_pref},
+            onSelectionChanged: (s) => _setPref(s.first),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(t('type_hint'), style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
   }
 
   Widget _band(int i) {
@@ -268,6 +306,8 @@ class _EqScreenState extends State<EqScreen> {
                   onChanged: _setEnabled,
                 ),
                 const SizedBox(height: 8),
+                _typePicker(),
+                const SizedBox(height: 16),
                 Text(t('profile'), style: Theme.of(context).textTheme.labelLarge),
                 DropdownButton<String>(
                   isExpanded: true,
@@ -339,15 +379,24 @@ class _EqScreenState extends State<EqScreen> {
                 const SizedBox(height: 16),
                 Text(t('note_bands'), style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 8),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: TextButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const DeviceInfoScreen()),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => const DeviceInfoScreen()),
+                      ),
+                      icon: const Icon(Icons.info_outline),
+                      label: Text(t('open_info')),
                     ),
-                    icon: const Icon(Icons.info_outline),
-                    label: Text(t('open_info')),
-                  ),
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => const EngineScreen()),
+                      ),
+                      icon: const Icon(Icons.settings_input_component),
+                      label: Text(t('open_engine')),
+                    ),
+                  ],
                 ),
               ],
             ),

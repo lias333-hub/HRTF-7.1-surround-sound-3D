@@ -73,6 +73,20 @@ void main() {
     expect(q['player']!.state, CapState.planned);
   });
 
+  test('dynamics capability follows the native probe when it was reported', () {
+    Capability dyn(Map<String, dynamic> m) =>
+        DeviceReport.fromMap(m).capabilities().firstWhere((c) => c.key == 'dyn');
+    final failed = sample(sdk: 28)..['dynamics'] = {'ok': false, 'error': 'refused'};
+    expect(dyn(failed).state, CapState.no);
+    expect(DeviceReport.fromMap(failed).toText(), contains('Dynamics Processing: failed (refused)'));
+    final fine = sample(sdk: 28)..['dynamics'] = {'ok': true};
+    expect(dyn(fine).state, CapState.yes);
+    expect(DeviceReport.fromMap(fine).toText(), contains('Dynamics Processing: can be created'));
+    // Below Android 9 the probe result is irrelevant.
+    final old = sample(sdk: 24)..['dynamics'] = {'ok': false};
+    expect(dyn(old).state, CapState.needs);
+  });
+
   test('missing equalizer is reported, not hidden', () {
     final r = DeviceReport.fromMap(sample(withEq: false));
     expect(r.eq, isNull);
