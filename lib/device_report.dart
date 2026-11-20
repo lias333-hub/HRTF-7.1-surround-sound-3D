@@ -50,6 +50,8 @@ class OutputEntry {
         return 'USB device';
       case 22:
         return 'USB headset';
+      case 18:
+        return 'Telephony';
       case 26:
         return 'Bluetooth LE headset';
       case 27:
