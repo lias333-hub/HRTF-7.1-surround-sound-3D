@@ -57,7 +57,7 @@
 
 ## 4. قيد العمل
 
-- **لا شيء قيد التنفيذ الآن** سوى انتظار المستخدم. التوثيق أُنجز: `docs/MANIFEST.md`، `docs/CHECKPOINT.md`، `docs/NOTEBOOK.md`، `docs/IDEAS_REGISTRY.md` (commit `33b2a07`) ونُسخت إلى الـProject (`claude/MANIFEST.md`، `claude/CHECKPOINT.md`، `claude/NOTEBOOK.md`، و`claude/ideas-registry.md` المحدَّث) مع أسطر الذاكرة. (طلب المستخدم 2026-11-21 09:33: «لا تترك ولا شي بدون تسجيل».)
+- **لا شيء قيد التنفيذ الآن** سوى انتظار المستخدم (نتائج اختبار v0.4/v0.3 وقراره في نقطتي القرار §5 بند 3.5). التوثيق محدَّث لـv0.4 ومنسوخ للـProject (`claude/MANIFEST.md`، `claude/CHECKPOINT.md`، `claude/NOTEBOOK.md`، `claude/ideas-registry.md`) مع أسطر الذاكرة. (طلب المستخدم 2026-11-21: «لا تترك ولا شي بدون تسجيل».)
 - **مواضع النسخ:** المستودع `docs/` هو المصدر الأساسي؛ الـProject نسخة مرآة. عند كل تحديث: عدّل الملف في المستودع → commit/push → `project_write` بنفس المحتوى (`local_path`).
 - ملاحظة: **لم أجد صيغة ملفات LMClient** (manifest/checkpoint/notebook) في هذه البيئة، فاعتمدت صيغتي. يمكن مطابقتها إن أرسل نموذجاً منها.
 
