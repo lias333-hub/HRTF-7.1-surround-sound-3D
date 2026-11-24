@@ -2,7 +2,7 @@
 
 > **ما هذا الملف:** الوصف الثابت نسبياً للمشروع: ما هو، كيف هو مبني، كيف نبني ونختبر، وما الذي اتفقنا عليه. يتغير فقط عندما تتغير البنية أو القرارات أو طريقة العمل.
 > **الملفات الشقيقة:** `CHECKPOINT.md` (أين وصلنا الآن وماذا بعد) · `NOTEBOOK.md` (الدفتر الزمني الكامل) · `IDEAS_REGISTRY.md` (سجل الأفكار وحكمنا على كل فكرة).
-> **آخر تحديث:** 2026-11-21 · **الإصدار:** v0.3.0 (build 4) · **HEAD وقت الكتابة:** `1af2c79`
+> **آخر تحديث:** 2026-11-24 · **الإصدار:** v0.4.0 (build 5) · **HEAD وقت الكتابة:** `851214d` (قد يتقدم بـcommits توثيق فقط)
 > **قاعدة التحديث:** يُحدَّث هذا الملف عند أي تغيير في البنية أو القرارات أو الأدوات، ويُذكر التغيير في سطر بقسم «سجل تغييرات المانيفست» أسفله.
 
 ---
@@ -12,7 +12,7 @@
 - **الاسم:** Directional Audio.
 - **الهدف (بكلمات صاحب المشروع):** تطبيق يجعل **أي سماعة Stereo** تعطي صوتاً محيطياً دقيقاً وقريباً من Surround 7.1، بإضافة **HRTF**.
 - **المنصة:** أندرويد. واجهة Flutter (Dart) + طبقة أصلية Kotlin، ونواة DSP بـ C++ لاحقاً.
-- **المستودع:** `https://github.com/lias333-hub/hrtf-7.1-surround-sound-3d` (عام Public). الفرع الرئيسي `main`. وسم الإصدار الحالي `v0.3` = HEAD.
+- **المستودع:** `https://github.com/lias333-hub/hrtf-7.1-surround-sound-3d` (عام Public). الفرع الرئيسي `main`. الإصدار الحالي v0.4.0 (آخر commit للكود `851214d`).
 - **اسم الحزمة:** `com.directionalaudio.directional_audio` · اسم مشروع Flutter: `directional_audio`.
 - **لغة المستخدم:** العربية (لهجة لبنانية). يريد ردوداً مختصرة وعملية، ونقاشاً عميقاً عندما يطلبه أو عندما تُطرح أفكار جديدة.
 - **المشروع في claude.ai:** Project باسم «Directional Audio». فيه مستند `claude/ideas-registry.md` ونسخ من هذه الملفات.
@@ -41,9 +41,9 @@
 
 | الطبقة | الوصف | الحالة |
 |---|---|---|
-| **T1** | مؤثرات النظام على الخلط العام (session 0): Equalizer, BassBoost, Virtualizer, LoudnessEnhancer, DynamicsProcessing. يعمل بحسب الجهاز. | **منفذ v0.3** (سماع DP على الجهاز الحقيقي لم يُتحقق) |
+| **T1** | مؤثرات النظام على الخلط العام (session 0): Equalizer, BassBoost, Virtualizer, LoudnessEnhancer, DynamicsProcessing. يعمل بحسب الجهاز. | **منفذ v0.3/v0.4** (سماع DP على الجهاز الحقيقي لم يُتحقق) |
 | **T2** | مؤثرات على جلسة تطبيق محدد (audio session id). | مخطط |
-| **T3** | التقاط صوت التطبيقات AudioPlaybackCapture (أندرويد 10+، موافقة MediaProjection، بعض التطبيقات تمنع الالتقاط). مشكلة «الصوت المضاعف» (الأصلي لا يُكتم) غير محسومة. | تجربة لاحقة |
+| **T3** | التقاط صوت التطبيقات AudioPlaybackCapture (**أندرويد 10+ — J7 (أندرويد 9) لا يدعمه**، موافقة MediaProjection، بعض التطبيقات تمنع الالتقاط). مشكلة «الصوت المضاعف» (الأصلي لا يُكتم) غير محسومة. | تجربة لاحقة |
 | **T4** | مشغّل داخل التطبيق + نواة C++ بمعالجتنا الخاصة. **الوحيد الذي يضمن HRTF حقيقياً.** | مخطط (القلب المستقبلي) |
 | **T5** | Shizuku / Root. اختياري، خارج الأساس. | مؤجل |
 
@@ -68,16 +68,23 @@ Singleton يملك كل المؤثرات الحية (وليس الـActivity)، 
 - **الاستمرارية:** يحفظ حالة المحرك JSON في SharedPreferences (`engine_state`، المفاتيح `state` و`wanted`) ويستعيدها في الخدمة (`restoreIfEmpty()`).
 - **ملاحظة Kotlin:** `JSONObject(HashMap)` لا يُبنى في Kotlin القديم لـFlutter 3.22؛ تُبنى كائنات JSON يدوياً بحلقة `put`.
 
+**إضافات v0.4 في EngineHub:**
+- **جدول مخرج ← ملف (`slots`)** يعيش هنا لا في Dart (الخدمة قد تعمل بلا واجهة). الخانة: `{key "type|name", type, name, profile, gains[10], preamp, levels[]}`. `levels` (مللي بل للمعادل System) يحسبها Dart (`deviceLevels`) ويعيد إرسالها (`resync`) بعد كل بدء للمحرك وبعد حفظ/حذف ملف.
+- **حالة أخرى محفوظة في `engine_state`:** `profile` (آخر ملف طُبّق)، `locked`، `lastKey` (آخر مخرج أساسي)، `slots`. (`switchSeq` في الذاكرة فقط.)
+- **`decideProfile()`:** يحسب المخرج الأساسي (`OutputRouting.primary`) ويبدّل الملف **فقط** عند تغيّر المفتاح، وبلا قفل، ووجود خانة (`OutputRouting.shouldSwitch`). **مخرج بلا خانة ← يبقى الملف الحالي.** `syncOutput()` (يستدعيه Dart بعد بدء المعادل) و`onRouteChange()` (بعد debounce الجهاز، ثم `retryNow()`).
+- **Bypass:** `bypassReason()` = `create_failed` (فشل `rebuild`) أو `control_lost` (`hasControl()`/`OnControlStatusChangeListener`) بشرط أن المستخدم يريد المعالجة. **قاعدة العودة:** `scheduleRetry()` بتأخير 5 ثم 15 ثم 45 ث (`OutputRouting.retryDelay`) ثم الانتظار؛ وتُعاد من البداية عند تغيّر المخرج (`onRouteChange`) أو عودة التطبيق للواجهة (`retryIfBypassed` في `HomeShell`) أو زر «إعادة المحاولة». `stateListener` يخبر الخدمة لتغيير نص الإشعار.
+- **تقييد:** كشف Bypass يغطي معادل EQ فقط؛ أخطاء Bass/Virtualizer/Loudness تُسجَّل في `lastError` ولا ترفع Bypass.
+
 ### 4.4 EngineService (Kotlin)
 
 - `ACTION_STOP` = `com.directionalaudio.directional_audio.STOP_ENGINE`، القناة `"engine"`، رقم الإشعار `42`.
 - `startForeground` بنوع `mediaPlayback` على API 29+. النصوص (العنوان/النص/زر الإيقاف) تأتي من Dart وتُخزَّن في prefs ليعمل بعد إعادة التشغيل.
-- عند البدء: `markService(true)` ثم `restoreIfEmpty()` ثم `watchRoutes()`. زر الإيقاف يستدعي `setWanted(false)`. `START_STICKY`.
+- عند البدء: `stateListener` ثم `markService(true)` ثم `restoreIfEmpty()` ثم `watchRoutes()`. نص الإشعار يتبدل إلى نص Bypass (مُترجَم من Dart، مخزّن في prefs `n_bypass`) أثناء Bypass. زر الإيقاف يستدعي `setWanted(false)`. `START_STICKY`.
 
 ### 4.5 الجسر Flutter ↔ Kotlin
 
-- **MethodChannel `directional/eq`:** `start, setLevels, dpProbe, dpStart, dpGains, setEnabled, stop, deviceInfo, fxStart, fxSet, fxStop, svcStart, svcStop, status, notifStatus, notifRequest, batteryIgnored, batteryRequest, tone, toneStop`.
-- **EventChannel `directional/status`:** يبث حالة المحرك من `EngineHub.emit()` إلى `EngineApi.stream()`.
+- **MethodChannel `directional/eq`:** `start, setLevels(+profile), dpProbe, dpStart, dpGains(+profile), setEnabled, stop, deviceInfo, fxStart, fxSet, fxStop, svcStart(+bypass), svcStop, status, notifStatus, notifRequest, batteryIgnored, batteryRequest, tone, toneStop` و**(v0.4)** `outAssign, outUnassign, outSync, lockSet, retry`.
+- **EventChannel `directional/status`:** يبث حالة المحرك من `EngineHub.emit()` إلى `EngineApi.stream()`. حقول الحالة (v0.4): `profile, switchSeq, locked, bypass, output{key,type,name}, assignments[]` إضافة للحقول السابقة؛ و`outSync` يضيف `switched`.
 - **أخطاء:** الأخطاء تعود كـ `PlatformException('EQ_ERROR', …)`؛ فشل Dynamics الصريح يعود `DP_FAILED`.
 
 ### 4.6 صلاحيات AndroidManifest (`native/AndroidManifest.xml`)
@@ -102,21 +109,23 @@ Singleton يملك كل المؤثرات الحية (وليس الـActivity)، 
 lib/                      واجهة Flutter (≈3,000 سطر)
   main.dart               نقطة الدخول، الثيم، اللغة
   shell.dart              التنقل السفلي (EQ / Effects / Tools / Settings) + resumeIfWanted
-  eq_screen.dart          شاشة EQ: 10 نطاقات، ملفات، منتقي النوع System/Dynamics/Auto
+  eq_screen.dart          شاشة EQ: 10 نطاقات، ملفات، منتقي النوع System/Dynamics/Auto، بطاقة المخرج والتعيين والقفل، شريط Bypass
   eq_model.dart           EqProfile، kBandFreqs (31.25…16000 Hz)، ±12 dB، ملفات builtin، استيراد/تصدير GraphicEQ
   effects_screen.dart     Bass / Virtualizer / Loudness
   tools_screen.dart       أدوات: اختبار القنوات (tone)، بطاقة المحرك، تقرير الجهاز
-  engine.dart             EqEngine, FxEngine, EngineApi, EngineStatus, ToneEngine, DeviceInfo
-  engine_screen.dart      شاشة المحرك: مفتاح الخدمة + حالة حية + إشعارات + بطارية
+  engine.dart             EqEngine (apply/assign/resync), FxEngine, EngineApi, EngineStatus (+OutputRef/Assignment), ToneEngine, DeviceInfo
+  engine_screen.dart      شاشة المحرك: مفتاح الخدمة + حالة حية (ملف/قفل/Bypass) + قائمة التعيينات + إشعارات + بطارية
   device_report.dart      تقرير القدرات (yes/no/needs N)
   device_info_screen.dart شاشة معلومات الجهاز مع التقرير القابل للنسخ
   settings_screen.dart / language_sheet.dart
   store.dart              تخزين SharedPreferences (user, working, selected, enabled, backend, lang, fx)
-  strings.dart            L10n: جداول 5 لغات + fallback إنجليزي (798 سطر)
-  app_info.dart           kAppVersion = '0.3.0'
+  strings.dart            L10n: جداول 5 لغات + fallback إنجليزي (≈ 900 سطر)
+  app_info.dart           kAppVersion = '0.4.0'
 native/                   ملفات Kotlin والـManifest (تُنسخ إلى android/ عند البناء)
-  EngineHub.kt (616) · EngineService.kt (104) · MainActivity.kt (323) · AndroidManifest.xml
-test/                     7 ملفات اختبار، 41 اختباراً كلها تنجح
+  EngineHub.kt · EngineService.kt · MainActivity.kt · AndroidManifest.xml
+  OutputRouting.kt        منطق نقي بلا Android: أولوية المخرج، المفتاح، متى يُبدَّل الملف، جدول إعادة المحاولة
+  test/OutputRoutingTest.kt   10 اختبارات JUnit (تُنسخ إلى android/app/src/test عند البناء)
+test/                     7 ملفات اختبار Dart، 56 اختباراً كلها تنجح
 ci/
   prepare_android.sh      يولّد android/ (غير مُلتزَم به) ويُسقط native/*.kt فوقه
   devshell/               صندوق البناء التفاعلي (client.sh, loop.sh, bin/emu, bin/dsync …)
@@ -124,7 +133,7 @@ ci/
   build.yml               CI على push إلى main: analyze + test + build APK
   dev-shell.yml           الصندوق التفاعلي على فرع dev-shell
 docs/                     هذه الملفات
-pubspec.yaml              الاسم directional_audio، 0.3.0+4، تبعية وحيدة: shared_preferences ^2.2.3
+pubspec.yaml              الاسم directional_audio، 0.4.0+5، تبعية وحيدة: shared_preferences ^2.2.3
 ```
 
 > مجلد `android/` **غير موجود في المستودع**؛ يُولَّد في كل بناء بـ `ci/prepare_android.sh`.
@@ -148,10 +157,12 @@ ci/devshell/client.sh status | stop
 - متغير `DS_TRAILERS` يضيف أسطر trailers لرسائل commit التي ينشئها السكربت.
 - **المستودع عام:** لا تضع أسراراً في أوامر dev-shell أبداً (الأوامر والمخرجات علنية).
 - الأداة `emu` على الصندوق: `emu start 34` (محاكي أندرويد 14)، `install`, `launch`, `shot NAME`, `ui`, `tap X Y`, `tapt 'text'`, `key BACK`, `sh`, `crash`, `logclear`. أخطاء Kotlin تُقرأ من `/tmp/kotlin-daemon*.log`.
+- **لتحديث الصندوق بآخر ما دُفع:** `git fetch -q origin main && git reset -q --hard origin/main` (`git pull` يفشل: «divergent branches»). JDK 17: `export JAVA_HOME=$JAVA_HOME_17_X64`.
+- `emu`: `emu tapt 'System'` قد يضغط عنصراً خاطئاً (يطابق الوصف الكامل)؛ استعمل إحداثيات المنتقي. العناصر خارج الشاشة لا تظهر في `emu ui` فيلزم التمرير بـ`emu sh 'input swipe ...'`.
 - Flutter **3.22.0** / Dart **3.4**. الزمن: بناء ≈ 20–135 ث. يلزم **JDK 17** لـGradle 7.x (الافتراضي على الصندوق JDK 25 ويفشل).
 
 ### 6.3 CI (`build.yml`)
-يعمل على push إلى `main` (إلا إن احتوت الرسالة `[skip ci]`): JDK 17 + Flutter 3.22.0 → `prepare_android.sh` → `flutter analyze` → `flutter test` → `flutter build apk --release` → رفع الـAPK كـartifact. **حالياً كل الـcommits تحمل `[skip ci]`** والبناء يجري على dev-shell.
+يعمل على push إلى `main` (إلا إن احتوت الرسالة `[skip ci]`): JDK 17 + Flutter 3.22.0 → `prepare_android.sh` → `flutter analyze` → `flutter test` → **اختبارات Kotlin** (`cd android && ./gradlew :app:testDebugUnitTest`) → `flutter build apk --release` → رفع الـAPK كـartifact. **حالياً كل الـcommits تحمل `[skip ci]`** والبناء يجري على dev-shell.
 
 ### 6.4 اصطلاح الـcommit
 - نهاية الرسالة: `[skip ci]`.
@@ -203,3 +214,4 @@ ci/devshell/client.sh status | stop
 ## 11. سجل تغييرات المانيفست
 
 - 2026-11-21: إنشاء الملف (v0.3.0).
+- 2026-11-24: تحديث لـv0.4.0 (OutputRouting، جدول المخرجات، Bypass، قنوات جديدة، اختبارات Kotlin في CI، ملاحظات الصندوق).

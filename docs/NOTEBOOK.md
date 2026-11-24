@@ -114,6 +114,39 @@
   8. `[معلّق]` تأجيل: `AudioManager.getAudioDevicesForAttributes` (API 33) لمعرفة المخرج **الفعلي** بدل الأولوية الثابتة. يحتاج تحققاً على جهاز حقيقي.
 - `[ملاحظة]` المخارج السلكية قد تحمل اسماً عاماً («Headset») فتشترك كل السماعات السلكية في خانة واحدة؛ مقبول ومتوقَّع، وسيُذكر في الواجهة.
 
+### 2026-11-24 15:31 — عودة المستخدم بعد توقف ثلاثة أيام
+- `[ملاحظة المستخدم]` «نكمل.. وكمان هل حابب تنفذ كل الأفكار وشايفها ممكنة؟» ← سؤال جدوى؛ جوابي في §10 أدناه.
+- كان الكود الأصلي وجزء من Dart مكتوبَين قبل التوقف؛ تحققت من سلامة الشجرة (`git status`) ثم أكملت.
+
+### التنفيذ (11-24)
+- **Kotlin:** `OutputRouting.kt` (منطق نقي: `rank/primary/key/shouldSwitch/retryDelay`) + `native/test/OutputRoutingTest.kt` (10 اختبارات JUnit) · `EngineHub`: جدول `slots` + `locked` + `lastKey` + `profile` + `switchSeq` محفوظة في `engine_state`، `decideProfile()` و`syncOutput()` و`onRouteChange()`، `assignOutput/unassignOutput/setLocked/retryNow`، `watchControl()` (`hasControl` + `OnControlStatusChangeListener`)، `scheduleRetry()` (5/15/45 ث)، `status()` يحمل `profile/locked/bypass/output/assignments/switchSeq` · `EngineService`: `stateListener` يبدّل نص الإشعار إلى نص Bypass · `MainActivity`: `outAssign/outUnassign/outSync/lockSet/retry` + وسيط `profile` في `setLevels/dpGains` + `bypass` في `svcStart`.
+- **Dart:** `EngineStatus` (+`OutputRef`/`Assignment` records) · `EqEngine.apply/assign/resync` · `EngineApi.outputSync/unassign/setLock/retry/retryIfBypassed` · `EqScreen`: بطاقة «المخرج والملفات»، شريط Bypass، اشتراك EventChannel، `_adopt`، `_syncSlots` · `EngineScreen`: سطر الملف والقفل وBypass وقائمة التعيينات · `HomeShell`: إعادة محاولة عند عودة التطبيق.
+- **القرار التفصيلي:** تتبنّى الواجهة ملفاً بدّله الأصلي **فقط** عندما يزيد `switchSeq` (حتى لا يعيد حدث قديم اختياراً حديثاً للمستخدم)، وعند البدء بعد `outSync`.
+- `[خطأ→إصلاح]` **الترجمة:** سكربت إدخال المفاتيح كتب محارف bidi (`U+2068/U+2069`) حرفياً بدل `\u2068` ← حُوّلت إلى escapes كبقية الملف (اتفاقية المشروع).
+- `[خطأ→إصلاح]` **الاختبارات:** 5 اختبارات `EqScreen` فشلت لأن البطاقة الجديدة دفعت زر «معلومات الجهاز» خارج منطقة القائمة الكسولة ← رفع ارتفاع النافذة الاختبارية 4800→8000. واختبارات `find.byType(Switch)` صارت `.first` (مفتاحان الآن: الرئيسي والقفل).
+- `[أداة]` على صندوق dev-shell `git pull` يفشل («divergent branches») لأن الصندوق يضيف commits خاصة ← الطريقة الصحيحة: `git fetch -q origin main && git reset -q --hard origin/main`. وJDK 17 يُختار بـ`JAVA_HOME=$JAVA_HOME_17_X64`.
+- `[أداة]` `prepare_android.sh` ينسخ `native/test/*.kt` ويضيف `testImplementation 'junit:junit:4.13.2'`؛ `build.yml` يشغّل `./gradlew :app:testDebugUnitTest` (النتيجة في `build/app/test-results/`).
+- `[أداة]` في `emu`: `tapt 'System'` يضغط عنصراً خاطئاً (يطابق الوصف الكامل لمجموعة «Equalizer type»)؛ الأفضل إحداثيات المنتقي الثلاثي (≈ (200,674) System، (540,674) Dynamics، (870,674) Auto). وعناصر خارج الشاشة لا تظهر في `emu ui` فيلزم التمرير (`emu sh 'input swipe ...'`).
+
+### اختبارات 11-24
+- `[اختبار]` `flutter analyze`: لا مشاكل. `flutter test`: **56 ناجحاً**. JUnit: **10 ناجحة** (Kotlin ترجم من أول مرة؛ تحذيرات deprecation قديمة فقط).
+- `[اختبار]` **محاكي أندرويد 14:** البطاقة تعرض «Playing to: Speaker (sdk_gphone64_x86_64)»؛ تعيين Flat للمخرج يظهر «Profile for this output: Flat» ويبقى **بعد force-stop وإعادة التشغيل**؛ شاشة المحرك تعرض «Profile: Flat» و«Profiles per output»؛ الخدمة تعمل والإشعار «Sound engine is running»؛ لا أعطال؛ **لا Bypass كاذب** مع Dynamics (10 نطاقات) ولا مع معادل النظام (5 نطاقات).
+- `[اكتشاف]` المحاكي يعرض مخرجين: Speaker (نوع 2) وTelephony (نوع 18)؛ الأخير يُتجاهل في الاختيار بحكم `rank=0` (اختبار JUnit يغطيه).
+- `[معلّق]` لا يمكن على المحاكي: التبديل الفعلي عند توصيل سماعة، `control_lost`، `create_failed`، تحديث الإشعار عند Bypass. تُختبر على هاتف حقيقي.
+- `[إصدار]` **v0.4.0+5** — commits: `9a510fe` (WIP) → `caacdb5` (ارتفاع الاختبار) → `851214d` (النسخة)؛ APK `directional-audio-v0.4.0.apk` 21.0 MB (20,951,293 بايت)، sha256 يبدأ `4ae38613bebb072c`؛ أُرسل للمستخدم 15:50.
+
+## 10. جواب سؤال «هل حابب تنفذ كل الأفكار وشايفها ممكنة؟» (2026-11-24)
+
+**جوابي: لا، ليست كلها؛ ومعظمها ممكن لكن بمستويات يقين مختلفة، وبعضها أنصح بعدم تنفيذه.**
+
+1. **ممكنة بيقين ورخيصة** (تُنفَّذ بالترتيب): ملف لكل مخرج/قفل/Bypass (✅ v0.4)، Quick Settings Tile، الثيمات وDynamic Color وواجهة Wavelet، استيراد AutoEq الموجود، تذكير حارس السمع، تشخيص أوسع.
+2. **ممكنة لكن غير مثبتة على الهواتف (تحتاج تجربة قبل البناء):** سماع Dynamics على الخلط العام (أساس T1)؛ MBC وFletcher-Munson بـDP؛ كشف النشاط بـ`getActivePlaybackConfigurations`؛ كشف `Spatializer` (API 33)؛ **التقاط الصوت T3 وسؤال الصوت المضاعف**.
+3. **ممكنة فقط داخل مشغّلنا (T4) بنواة C++:** HRTF الحقيقي، Convolution/IR/SOFA، محاكاة 7.1، Crossfeed/Room، تحليل النوع قبل التشغيل. هنا القيمة الأكبر والعمل الأكبر.
+4. **أنصح بعدم تنفيذها أو تأجيلها طويلاً:** Adaptive BT Codec (لا يستطيع تطبيق عادي تغيير الكوديك — عرض فقط)، تعويض تشوه سماعة الهاتف (بلا قياس تخمين)، AI Voice Isolation/سلسلة المايك (منتج آخر)، Zero-Copy (يختفي إن كانت المعالجة والإخراج في C++)، Dolby (ترخيص)، تتبع الرأس بالكاميرا (بطارية وخصوصية)، Ambient EQ بالمايك (كلفة خصوصية).
+- **تحذير جوهري (حقيقة من تصميم أندرويد، حسب علمي):** هاتفه الأساسي **J7 أندرويد 9 لا يدعم الالتقاط (T3) أصلاً** (يبدأ من أندرويد 10). فـHRTF الحقيقي لتطبيقات الألعاب الأخرى على J7 غير ممكن عبر T3؛ يبقى T1 (مؤثرات النظام) أو T4 (مشغّلنا). على POCO C71 (أندرويد 15) T3 ممكن نظرياً بشرط حل الصوت المضاعف.
+- **نقطتا القرار:** (أ) سماع Dynamics على J7. (ب) تجربة T3 صغيرة على POCO C71. الجوابان يحددان شكل المنتج: «محيطي لكل التطبيقات» أم «HRTF حقيقي داخل المشغّل + تحسين EQ للباقي».
+- **ما لا أعرفه (لا أخمّنه):** هل تسمح ألعاب POCO بالالتقاط، وهل يمكن كتم الأصلي؛ هذا يُقاس لا يُفتى به.
+
 ---
 
 ## قالب إدخال جديد (انسخه)
