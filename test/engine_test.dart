@@ -10,10 +10,13 @@ const _channel = MethodChannel('directional/eq');
 class _Native {
   final calls = <MethodCall>[];
   Map<String, dynamic> dp = {'ok': true, 'bands': 10};
+  Map<String, dynamic> status = {};
 
   Future<Object?> handle(MethodCall c) async {
     calls.add(c);
     switch (c.method) {
+      case 'status':
+        return status;
       case 'dpStart':
         return dp;
       case 'start':
@@ -147,5 +150,131 @@ void main() {
     expect(await run(true, false), ['status', 'svcStart']);
     expect(await run(true, true), ['status']);
     expect(await run(false, false), ['status']);
+  });
+
+  // ------------------------------------------------------------------ v0.4
+
+  test('apply sends the profile name with the gains (dynamics) and with the levels (system)', () async {
+    final d = EqEngine();
+    await d.start(pref: 'dynamics');
+    await d.apply(EqProfile(name: 'user:x', gains: List<double>.filled(10, 2), preamp: -1));
+    final dp = native.calls.lastWhere((c) => c.method == 'dpGains').arguments as Map;
+    expect(dp['profile'], 'user:x');
+    expect(dp['preamp'], -1);
+    expect((dp['gains'] as List).length, 10);
+
+    native.calls.clear();
+    final s = EqEngine();
+    await s.start(pref: 'system');
+    await s.apply(EqProfile.flat('user:y'));
+    final sys = native.calls.lastWhere((c) => c.method == 'setLevels').arguments as Map;
+    expect(sys['profile'], 'user:y');
+    expect((sys['levels'] as List).length, 5);
+  });
+
+  test('assign sends the output, the profile and the levels of the running back end', () async {
+    const out = (key: '3|Headset', type: 3, name: 'Headset');
+    final s = EqEngine();
+    await s.start(pref: 'system');
+    await s.assign(out, EqProfile(name: 'builtin:bass', gains: List<double>.filled(10, 6)));
+    var a = native.calls.lastWhere((c) => c.method == 'outAssign').arguments as Map;
+    expect(a['key'], '3|Headset');
+    expect(a['type'], 3);
+    expect(a['name'], 'Headset');
+    expect(a['profile'], 'builtin:bass');
+    expect((a['gains'] as List).length, 10);
+    expect((a['levels'] as List).length, 5);
+    expect((a['levels'] as List).every((x) => x is int && x <= 1500), isTrue);
+
+    final d = EqEngine();
+    await d.start(pref: 'dynamics');
+    await d.assign(out, EqProfile.flat());
+    a = native.calls.lastWhere((c) => c.method == 'outAssign').arguments as Map;
+    expect(a['levels'], isEmpty);
+  });
+
+  test('resync refreshes assignments whose profile exists and removes the ones whose profile is gone', () async {
+    final e = EqEngine();
+    await e.start(pref: 'dynamics');
+    native.calls.clear();
+    await e.resync(
+      [
+        (key: '3|Headset', type: 3, name: 'Headset', profile: 'user:mine'),
+        (key: '8|Buds', type: 8, name: 'Buds', profile: 'user:deleted'),
+      ],
+      [EqProfile(name: 'user:mine', gains: List<double>.filled(10, 3))],
+    );
+    expect(native.names, ['outAssign', 'outUnassign']);
+    expect((native.calls[0].arguments as Map)['gains'], List<double>.filled(10, 3));
+    expect((native.calls[1].arguments as Map)['key'], '8|Buds');
+  });
+
+  test('EngineStatus.fromMap reads output, assignments, lock, bypass and switch counters', () {
+    final s = EngineStatus.fromMap({
+      'service': true,
+      'wanted': true,
+      'eqKind': 'dynamics',
+      'eqEnabled': true,
+      'eqBands': 10,
+      'fxActive': false,
+      'outputs': [
+        {'type': 3, 'name': 'Headset'},
+      ],
+      'profile': 'builtin:bass',
+      'switchSeq': 2,
+      'switched': true,
+      'locked': true,
+      'bypass': 'control_lost',
+      'output': {'key': '3|Headset', 'type': 3, 'name': 'Headset'},
+      'assignments': [
+        {'key': '3|Headset', 'type': 3, 'name': 'Headset', 'profile': 'builtin:bass'},
+      ],
+    });
+    expect(s.profile, 'builtin:bass');
+    expect(s.switchSeq, 2);
+    expect(s.switched, isTrue);
+    expect(s.locked, isTrue);
+    expect(s.bypass, 'control_lost');
+    expect(s.output, (key: '3|Headset', type: 3, name: 'Headset'));
+    expect(s.assignments.single.profile, 'builtin:bass');
+  });
+
+  test('EngineStatus.fromMap copes with the v0.3 shape (no new fields)', () {
+    final s = EngineStatus.fromMap({
+      'service': false,
+      'wanted': false,
+      'eqKind': 'none',
+      'eqEnabled': false,
+      'eqBands': 0,
+      'fxActive': false,
+      'outputs': [],
+    });
+    expect(s.profile, '');
+    expect(s.locked, isFalse);
+    expect(s.bypass, isNull);
+    expect(s.output, isNull);
+    expect(s.assignments, isEmpty);
+    expect(s.switchSeq, 0);
+  });
+
+  test('outputSync returns the native answer including whether it switched', () async {
+    native.status = {'eqKind': 'dynamics', 'profile': 'builtin:bass', 'switched': true};
+    // the mock answers every unknown call with null, so teach it this one
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (c) async => c.method == 'outSync' ? native.status : null);
+    final r = await EngineApi.outputSync();
+    expect(r.switched, isTrue);
+    expect(r.profile, 'builtin:bass');
+  });
+
+  test('retryIfBypassed retries only while the sound is bypassed', () async {
+    native.status = {'eqKind': 'dynamics', 'bypass': null};
+    await EngineApi.retryIfBypassed();
+    expect(native.names, ['status']);
+
+    native.calls.clear();
+    native.status = {'eqKind': 'dynamics', 'bypass': 'create_failed'};
+    await EngineApi.retryIfBypassed();
+    expect(native.names, ['status', 'retry']);
   });
 }

@@ -24,6 +24,13 @@ class EngineService : Service() {
         private const val PREFS = "engine_state"
     }
 
+    // the texts the notification shows (translated by the app)
+    private var title = "Directional Audio"
+    private var text = ""
+    private var stopLabel = "Stop"
+    private var bypassText = ""
+    private var shownBypass: String? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -41,13 +48,16 @@ class EngineService : Service() {
         // The texts come from the app (already translated); after a system restart there is no intent,
         // so the last ones are read back.
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val title = intent?.getStringExtra("title") ?: prefs.getString("n_title", null) ?: "Directional Audio"
-        val text = intent?.getStringExtra("text") ?: prefs.getString("n_text", null) ?: ""
-        val stop = intent?.getStringExtra("stop") ?: prefs.getString("n_stop", null) ?: "Stop"
-        prefs.edit().putString("n_title", title).putString("n_text", text).putString("n_stop", stop).apply()
+        title = intent?.getStringExtra("title") ?: prefs.getString("n_title", null) ?: "Directional Audio"
+        text = intent?.getStringExtra("text") ?: prefs.getString("n_text", null) ?: ""
+        stopLabel = intent?.getStringExtra("stop") ?: prefs.getString("n_stop", null) ?: "Stop"
+        bypassText = intent?.getStringExtra("bypass") ?: prefs.getString("n_bypass", null) ?: ""
+        prefs.edit().putString("n_title", title).putString("n_text", text).putString("n_stop", stopLabel)
+            .putString("n_bypass", bypassText).apply()
 
         try {
-            val n = buildNotification(title, text, stop)
+            shownBypass = EngineHub.bypass()
+            val n = buildNotification(title, currentText(), stopLabel)
             if (Build.VERSION.SDK_INT >= 29) {
                 startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
             } else {
@@ -59,6 +69,7 @@ class EngineService : Service() {
             return START_NOT_STICKY
         }
 
+        EngineHub.stateListener = { b -> refreshNotification(b) }
         EngineHub.markService(true)
         EngineHub.restoreIfEmpty()
         EngineHub.watchRoutes()
@@ -66,8 +77,23 @@ class EngineService : Service() {
     }
 
     override fun onDestroy() {
+        EngineHub.stateListener = null
         EngineHub.markService(false)
         super.onDestroy()
+    }
+
+    // While the sound is not being processed (bypass) the notification says so instead of "running".
+    private fun currentText(): String =
+        if (shownBypass != null && bypassText.isNotEmpty()) bypassText else text
+
+    private fun refreshNotification(bypass: String?) {
+        if (bypass == shownBypass) return
+        shownBypass = bypass
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(NOTIF_ID, buildNotification(title, currentText(), stopLabel))
+        } catch (ignored: Exception) {
+        }
     }
 
     @Suppress("DEPRECATION")

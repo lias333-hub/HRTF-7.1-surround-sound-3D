@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
@@ -61,17 +62,48 @@ object EngineHub {
     private var lastRebuildMs = 0L
     private var eqBands = 0
 
+    // per-output profiles. The table lives here (not in Dart) because an output can change while the service
+    // runs without any screen. Dart only edits it. "levels" are the millibel values for the system equalizer,
+    // computed by Dart (it owns that maths), so a slot is applied without any calculation here.
+    private class Slot(
+        val key: String,
+        val type: Int,
+        val name: String,
+        val profile: String,
+        val gains: List<Double>,
+        val preamp: Double,
+        val levels: List<Int>
+    )
+
+    private val slots = LinkedHashMap<String, Slot>()
+    private var profile = "" // name of the profile last applied ("" = never told)
+    private var locked = false // manual lock: no automatic profile switch on output changes
+    private var lastKey: String? = null // main output the last time we looked
+    private var switchSeq = 0 // grows each time a profile was switched automatically (not saved)
+
+    // bypass: the user wants processing but the sound is passing through untouched
+    private var createFailed = false
+    private var controlLost = false
+    private var retryAttempt = 0
+
+    /** Set by the service so the notification can show the bypass state. Called on the main thread. */
+    @Volatile
+    var stateListener: ((String?) -> Unit)? = null
+
     // route watching
     private var watching = false
     private var watchStartedMs = 0L
     private var devCb: Any? = null
-    private val routeRunnable = Runnable { rebuild() }
+    private val routeRunnable = Runnable { onRouteChange() }
+    private val retryRunnable = Runnable { rebuild() }
 
     fun init(c: Context) {
         if (appCtx == null) {
             appCtx = c.applicationContext
             try {
-                wanted = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("wanted", false)
+                val p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                wanted = p.getBoolean("wanted", false)
+                loadAssignments(p.getString("state", null))
             } catch (ignored: Exception) {
             }
         }
@@ -95,17 +127,37 @@ object EngineHub {
         emit()
     }
 
-    fun status(): Map<String, Any?> {
-        val outs = ArrayList<Map<String, Any>>()
+    /** Every output the system lists right now. */
+    private fun currentOutputs(): List<OutputRouting.Out> {
+        val out = ArrayList<OutputRouting.Out>()
         val c = appCtx
         if (c != null && Build.VERSION.SDK_INT >= 23) {
             try {
                 val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 for (d in am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
-                    outs.add(mapOf("type" to d.type, "name" to (d.productName?.toString() ?: "")))
+                    out.add(OutputRouting.Out(d.type, d.productName?.toString() ?: ""))
                 }
             } catch (ignored: Exception) {
             }
+        }
+        return out
+    }
+
+    /** Why the sound is not being processed although the user wants it ("create_failed" / "control_lost"), or null. */
+    private fun bypassReason(): String? {
+        val wantsProcessing = (eqKind != "none" && eqEnabled) || (fxActive && fxOn.values.any { it })
+        if (!wantsProcessing) return null
+        return if (createFailed) "create_failed" else if (controlLost) "control_lost" else null
+    }
+
+    fun bypass(): String? = bypassReason()
+
+    fun status(): Map<String, Any?> {
+        val outs = currentOutputs()
+        val cur = OutputRouting.primary(outs)
+        val assigned = ArrayList<Map<String, Any>>()
+        for (s in slots.values) {
+            assigned.add(mapOf("key" to s.key, "type" to s.type, "name" to s.name, "profile" to s.profile))
         }
         return mapOf(
             "service" to running,
@@ -114,18 +166,29 @@ object EngineHub {
             "eqEnabled" to eqEnabled,
             "eqBands" to eqBands,
             "fxActive" to fxActive,
-            "outputs" to outs,
+            "outputs" to outs.map { mapOf("type" to it.type, "name" to it.name) },
             "error" to lastError,
-            "rebuiltAt" to lastRebuildMs
+            "rebuiltAt" to lastRebuildMs,
+            "profile" to profile,
+            "switchSeq" to switchSeq,
+            "locked" to locked,
+            "bypass" to bypassReason(),
+            "output" to (if (cur == null) null else mapOf(
+                "key" to OutputRouting.key(cur), "type" to cur.type, "name" to cur.name
+            )),
+            "assignments" to assigned
         )
     }
 
     fun emit() {
-        val s = sink ?: return
         val m = status()
         main.post {
             try {
-                s.success(m)
+                sink?.success(m)
+            } catch (ignored: Exception) {
+            }
+            try {
+                stateListener?.invoke(m["bypass"] as String?)
             } catch (ignored: Exception) {
             }
         }
@@ -169,25 +232,30 @@ object EngineHub {
         val e = Equalizer(0, session)
         e.enabled = false
         eq = e
+        watchControl(e)
         eqKind = "system"
         eqEnabled = false
         sysSession = session
         eqBands = e.numberOfBands.toInt()
         lastError = null
+        createFailed = false
         persist()
         watchRoutes()
         emit()
         return eqMap(e)
     }
 
-    fun setSysLevels(levels: List<Int>) {
+    /** [profileName]: which saved profile these levels come from, so the hub knows what is applied. */
+    fun setSysLevels(levels: List<Int>, profileName: String? = null) {
         sysLevels = levels
+        if (profileName != null) profile = profileName
         try {
             applySysLevels()
         } catch (e: Exception) {
             lastError = e.message ?: e.javaClass.simpleName
         }
         persist()
+        emit()
     }
 
     private fun applySysLevels() {
@@ -210,12 +278,15 @@ object EngineHub {
         if (Build.VERSION.SDK_INT < 28) return mapOf("ok" to false, "error" to "needs Android 9+")
         if (centers.isEmpty()) return mapOf("ok" to false, "error" to "no bands")
         return try {
-            dp = createDp(centers)
+            val d = createDp(centers)
+            dp = d
+            watchControl(d)
             dpCenters = centers
             eqKind = "dynamics"
             eqEnabled = false
             eqBands = centers.size
             lastError = null
+            createFailed = false
             persist()
             watchRoutes()
             emit()
@@ -239,15 +310,17 @@ object EngineHub {
         }
     }
 
-    fun setDpGains(gains: List<Double>, preamp: Double) {
+    fun setDpGains(gains: List<Double>, preamp: Double, profileName: String? = null) {
         dpGains = gains
         dpPreamp = preamp
+        if (profileName != null) profile = profileName
         try {
             if (Build.VERSION.SDK_INT >= 28) applyDp()
         } catch (t: Throwable) {
             lastError = t.message ?: t.javaClass.simpleName
         }
         persist()
+        emit()
     }
 
     // Band i covers everything up to its cutoff; cutoffs sit halfway (geometric mean) between centres.
@@ -466,16 +539,58 @@ object EngineHub {
         loud = null
     }
 
+    // ---------------------------------------------------------------- bypass (state + return rule)
+
+    /**
+     * Another app may take over the effect (only one app controls an effect type at a time). The system tells us;
+     * the sound is then unprocessed, which must be visible and must come back by itself when possible.
+     */
+    private fun watchControl(e: AudioEffect) {
+        controlLost = try {
+            !e.hasControl()
+        } catch (ignored: Exception) {
+            false
+        }
+        try {
+            e.setControlStatusListener { _, granted ->
+                controlLost = !granted
+                if (controlLost) scheduleRetry() else cancelRetry()
+                emit()
+            }
+        } catch (ignored: Exception) {
+        }
+    }
+
+    private fun scheduleRetry() {
+        main.removeCallbacks(retryRunnable)
+        val d = OutputRouting.retryDelay(retryAttempt) ?: return
+        retryAttempt++
+        main.postDelayed(retryRunnable, d)
+    }
+
+    private fun cancelRetry() {
+        retryAttempt = 0
+        main.removeCallbacks(retryRunnable)
+    }
+
+    /** User pressed "retry", the app came back to the screen, or the output changed: start the return rule over. */
+    fun retryNow() {
+        cancelRetry()
+        rebuild()
+    }
+
     // ---------------------------------------------------------------- rebuild after route change / restart
 
     /** Throws everything away and recreates it from the remembered settings. */
     fun rebuild() {
         var err: String? = null
+        controlLost = false
         try {
             if (eqKind == "system") {
                 releaseEq()
                 val e = Equalizer(0, sysSession)
                 eq = e
+                watchControl(e)
                 applySysLevels()
                 e.enabled = eqEnabled
                 eqBands = e.numberOfBands.toInt()
@@ -483,6 +598,7 @@ object EngineHub {
                 releaseDp()
                 val d = createDp(dpCenters)
                 dp = d
+                watchControl(d)
                 if (dpGains.isNotEmpty()) applyDp()
                 d.enabled = eqEnabled
                 eqBands = dpCenters.size
@@ -499,8 +615,12 @@ object EngineHub {
                 err = err ?: (t.message ?: t.javaClass.simpleName)
             }
         }
+        createFailed = err != null
         lastError = err
         lastRebuildMs = System.currentTimeMillis()
+        // The return rule: while the sound is unprocessed, try again by itself (5 s, 15 s, 45 s), then wait for
+        // the next output change, app resume or the user's retry button.
+        if (createFailed || controlLost) scheduleRetry() else cancelRetry()
         emit()
     }
 
@@ -525,7 +645,40 @@ object EngineHub {
                 fxOn[k] = on?.optBoolean(k, false) ?: false
                 fxVal[k] = v?.optInt(k, 0) ?: 0
             }
-            if (eqKind != "none" || fxActive) rebuild()
+            profile = o.optString("profile", "")
+            loadAssignments(raw)
+            // The output may have changed while the process was dead: pick the profile for it, then rebuild.
+            if (eqKind != "none" || fxActive) onRouteChange()
+        } catch (ignored: Exception) {
+        }
+    }
+
+    /** The per-output table, the lock and the last seen main output (all survive a process restart). */
+    private fun loadAssignments(raw: String?) {
+        if (raw == null) return
+        try {
+            val o = JSONObject(raw)
+            locked = o.optBoolean("locked", false)
+            val lk = o.optString("lastKey", "")
+            lastKey = if (lk.isEmpty()) null else lk
+            slots.clear()
+            val arr = o.optJSONArray("slots")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val so = arr.optJSONObject(i) ?: continue
+                    val key = so.optString("key", "")
+                    if (key.isEmpty()) continue
+                    slots[key] = Slot(
+                        key,
+                        so.optInt("type", 0),
+                        so.optString("name", ""),
+                        so.optString("profile", ""),
+                        doubles(so.optJSONArray("gains")),
+                        so.optDouble("preamp", 0.0),
+                        ints(so.optJSONArray("levels"))
+                    )
+                }
+            }
         } catch (ignored: Exception) {
         }
     }
@@ -562,12 +715,105 @@ object EngineHub {
             }
             o.put("fxOn", on)
             o.put("fxVal", v)
+            o.put("profile", profile)
+            o.put("locked", locked)
+            o.put("lastKey", lastKey ?: "")
+            val arr = JSONArray()
+            for (sl in slots.values) {
+                val so = JSONObject()
+                so.put("key", sl.key)
+                so.put("type", sl.type)
+                so.put("name", sl.name)
+                so.put("profile", sl.profile)
+                so.put("gains", JSONArray(sl.gains))
+                so.put("preamp", sl.preamp)
+                so.put("levels", JSONArray(sl.levels))
+                arr.put(so)
+            }
+            o.put("slots", arr)
             c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("state", o.toString()).apply()
         } catch (ignored: Exception) {
         }
     }
 
+    // ---------------------------------------------------------------- per-output profiles
+
+    fun assignOutput(
+        key: String, type: Int, name: String, profileName: String,
+        gains: List<Double>, preamp: Double, levels: List<Int>
+    ) {
+        if (key.isEmpty()) return
+        slots[key] = Slot(key, type, name, profileName, gains, preamp, levels)
+        persist()
+        emit()
+    }
+
+    fun unassignOutput(key: String) {
+        slots.remove(key)
+        persist()
+        emit()
+    }
+
+    fun setLocked(v: Boolean) {
+        locked = v
+        persist()
+        emit()
+    }
+
+    private fun applySlot(s: Slot) {
+        switchSeq++
+        profile = s.profile
+        dpGains = s.gains
+        dpPreamp = s.preamp
+        if (s.levels.isNotEmpty()) sysLevels = s.levels
+    }
+
+    /**
+     * Looks at the main output now and, when the rules in [OutputRouting.shouldSwitch] allow it, loads the profile
+     * assigned to it into the remembered settings (the effects are updated by the caller). True when it switched.
+     */
+    private fun decideProfile(): Boolean {
+        val cur = OutputRouting.primary(currentOutputs())
+        val curKey = if (cur == null) null else OutputRouting.key(cur)
+        val slot = if (curKey == null) null else slots[curKey]
+        var switched = false
+        if (slot != null && OutputRouting.shouldSwitch(lastKey, curKey, locked, true)) {
+            applySlot(slot)
+            switched = true
+        }
+        lastKey = curKey
+        persist()
+        return switched
+    }
+
+    /**
+     * Dart calls this right after it started the equalizer: if the main output changed since last time (or the
+     * process was restarted), the assigned profile is applied now. Returns the new status.
+     */
+    fun syncOutput(): Map<String, Any?> {
+        val switched = decideProfile()
+        if (switched) {
+            try {
+                if (eqKind == "system") {
+                    applySysLevels()
+                } else if (eqKind == "dynamics" && Build.VERSION.SDK_INT >= 28) {
+                    applyDp()
+                }
+            } catch (t: Throwable) {
+                lastError = t.message ?: t.javaClass.simpleName
+            }
+        }
+        emit()
+        return status() + mapOf("switched" to switched)
+    }
+
     // ---------------------------------------------------------------- output (route) changes
+
+    /** The debounced reaction to a device being added or removed. */
+    fun onRouteChange() {
+        decideProfile()
+        retryNow()
+    }
 
     private fun routeChanged() {
         // Registering the callback reports every existing device once: ignore that burst.

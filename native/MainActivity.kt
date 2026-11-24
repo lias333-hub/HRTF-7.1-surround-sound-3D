@@ -56,7 +56,10 @@ class MainActivity : FlutterActivity() {
                         // --- system equalizer
                         "start" -> result.success(EngineHub.startSystem(call.argument<Int>("session") ?: 0))
                         "setLevels" -> {
-                            EngineHub.setSysLevels(call.argument<List<Int>>("levels") ?: emptyList())
+                            EngineHub.setSysLevels(
+                                call.argument<List<Int>>("levels") ?: emptyList(),
+                                call.argument<String>("profile")
+                            )
                             result.success(null)
                         }
                         // --- Dynamics Processing equalizer
@@ -67,8 +70,35 @@ class MainActivity : FlutterActivity() {
                         "dpGains" -> {
                             EngineHub.setDpGains(
                                 call.argument<List<Double>>("gains") ?: emptyList(),
-                                call.argument<Double>("preamp") ?: 0.0
+                                call.argument<Double>("preamp") ?: 0.0,
+                                call.argument<String>("profile")
                             )
+                            result.success(null)
+                        }
+                        // --- per-output profiles, lock, bypass
+                        "outAssign" -> {
+                            EngineHub.assignOutput(
+                                call.argument<String>("key") ?: "",
+                                call.argument<Int>("type") ?: 0,
+                                call.argument<String>("name") ?: "",
+                                call.argument<String>("profile") ?: "",
+                                call.argument<List<Double>>("gains") ?: emptyList(),
+                                call.argument<Double>("preamp") ?: 0.0,
+                                call.argument<List<Int>>("levels") ?: emptyList()
+                            )
+                            result.success(null)
+                        }
+                        "outUnassign" -> {
+                            EngineHub.unassignOutput(call.argument<String>("key") ?: "")
+                            result.success(null)
+                        }
+                        "outSync" -> result.success(EngineHub.syncOutput())
+                        "lockSet" -> {
+                            EngineHub.setLocked(call.argument<Boolean>("on") ?: false)
+                            result.success(null)
+                        }
+                        "retry" -> {
+                            EngineHub.retryNow()
                             result.success(null)
                         }
                         // --- shared
@@ -97,7 +127,8 @@ class MainActivity : FlutterActivity() {
                             startEngineService(
                                 call.argument<String>("title") ?: "",
                                 call.argument<String>("text") ?: "",
-                                call.argument<String>("stop") ?: ""
+                                call.argument<String>("stop") ?: "",
+                                call.argument<String>("bypass") ?: ""
                             )
                             result.success(null)
                         }
@@ -138,12 +169,13 @@ class MainActivity : FlutterActivity() {
 
     // ---------------------------------------------------------------- service, permissions, battery
 
-    private fun startEngineService(title: String, text: String, stop: String) {
+    private fun startEngineService(title: String, text: String, stop: String, bypass: String) {
         EngineHub.setWanted(true)
         val i = Intent(this, EngineService::class.java)
             .putExtra("title", title)
             .putExtra("text", text)
             .putExtra("stop", stop)
+            .putExtra("bypass", bypass)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
     }
 

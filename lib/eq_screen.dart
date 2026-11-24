@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'device_info_screen.dart';
+import 'device_report.dart';
 import 'engine.dart';
 import 'engine_screen.dart';
 import 'eq_model.dart';
@@ -31,12 +34,65 @@ class _EqScreenState extends State<EqScreen> {
   String? _error;
   String _pref = 'system';
 
+  /// The native engine's view: current output, assignments, lock, bypass.
+  EngineStatus _st = EngineStatus.none;
+  int _seen = 0; // last EngineStatus.switchSeq handled
+  StreamSubscription<EngineStatus>? _sub;
+
   List<EqProfile> get _all => [...kBuiltInProfiles, ..._user];
 
   @override
   void initState() {
     super.initState();
     _init();
+    _sub = EngineApi.stream().listen(_onStatus, onError: (_) {});
+    _loadStatus();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadStatus() async {
+    try {
+      final s = await EngineApi.status();
+      if (mounted) setState(() => _st = s);
+    } catch (_) {}
+  }
+
+  /// A live update from the native side. When it switched the profile by itself (the output changed while the
+  /// engine was running), show that profile here. Only switches count, so a stale update can never undo a choice
+  /// the user just made.
+  void _onStatus(EngineStatus s) {
+    if (!mounted) return;
+    setState(() => _st = s);
+    if (s.switchSeq > _seen) {
+      _seen = s.switchSeq;
+      if (_enabled) _adopt(s.profile);
+    }
+  }
+
+  /// Makes [name] the selected profile without sending it again (the native side already applied it).
+  void _adopt(String name) {
+    if (name.isEmpty || name == _selected) return;
+    final i = _all.indexWhere((e) => e.name == name);
+    if (i < 0) return;
+    final p = _all[i].copyWith(name: name);
+    setState(() {
+      _selected = name;
+      _working = p;
+    });
+    Store.saveWorking(p, name);
+  }
+
+  Future<void> _syncSlots() async {
+    try {
+      final st = await EngineApi.status();
+      await _engine.resync(st.assignments, _all);
+      await _loadStatus();
+    } catch (_) {}
   }
 
   Future<void> _init() async {
@@ -61,7 +117,14 @@ class _EqScreenState extends State<EqScreen> {
         await _engine.start(pref: _pref);
         await _engine.setEnabled(true);
         _enabled = true;
+        // Refresh the saved per-output copies, let the native side pick the profile of the current output
+        // (it may have changed while the screen was closed), and only then send what is selected.
+        await _syncSlots();
+        final r = await EngineApi.outputSync();
+        _seen = r.switchSeq;
+        _adopt(r.profile);
         await _apply();
+        await _loadStatus();
       } else {
         await _engine.setEnabled(false);
         _enabled = false;
@@ -155,6 +218,7 @@ class _EqScreenState extends State<EqScreen> {
     });
     await Store.saveUser(_user);
     await Store.saveWorking(p, name);
+    await _syncSlots(); // an assignment that points at this name now uses the new contents
   }
 
   void _delete() {
@@ -162,6 +226,136 @@ class _EqScreenState extends State<EqScreen> {
     setState(() => _user.removeWhere((e) => e.name == _selected));
     Store.saveUser(_user);
     _select('builtin:flat');
+    _syncSlots(); // assignments that used the deleted profile are removed
+  }
+
+  // ------------------------------------------------------------ output assignment, lock, bypass
+
+  Future<void> _assign() async {
+    final o = _st.output;
+    if (o == null) return;
+    try {
+      await _engine.assign(o, _working.copyWith(name: _selected));
+      await _loadStatus();
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    }
+  }
+
+  Future<void> _unassign(String key) async {
+    try {
+      await EngineApi.unassign(key);
+      await _loadStatus();
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    }
+  }
+
+  Future<void> _setLock(bool on) async {
+    try {
+      await EngineApi.setLock(on);
+      await _loadStatus();
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    }
+  }
+
+  Future<void> _retry() async {
+    try {
+      await EngineApi.retry();
+      await _loadStatus();
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => _error = e.message ?? e.code);
+    }
+  }
+
+  Widget _bypassBanner() {
+    final scheme = Theme.of(context).colorScheme;
+    final t = L10n.t;
+    return Card(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.warning_amber_rounded, color: scheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(t('byp_title'),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(color: scheme.onErrorContainer)),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            Text(t(_st.bypass == 'control_lost' ? 'byp_control' : 'byp_create'),
+                style: TextStyle(color: scheme.onErrorContainer)),
+            const SizedBox(height: 8),
+            FilledButton.tonal(onPressed: _retry, child: Text(t('byp_retry'))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _outputCard() {
+    final t = L10n.t;
+    final small = Theme.of(context).textTheme.bodySmall;
+    final o = _st.output;
+    Assignment? asg;
+    if (o != null) {
+      for (final a in _st.assignments) {
+        if (a.key == o.key) asg = a;
+      }
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t('out_title'), style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Icon(Icons.headphones, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(o == null
+                    ? t('out_unknown')
+                    : L10n.f('out_now', {'o': OutputEntry(o.type, o.name).toString()})),
+              ),
+            ]),
+            if (o != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                  asg == null
+                      ? t('out_unassigned')
+                      : L10n.f('out_assigned', {'p': L10n.profileName(asg.profile)}),
+                  style: small),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                FilledButton.tonal(
+                    onPressed: _enabled ? _assign : null, child: Text(t('out_assign'))),
+                if (asg != null)
+                  TextButton(
+                      onPressed: () => _unassign(asg!.key), child: Text(t('out_remove'))),
+              ]),
+            ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(t('out_lock')),
+              subtitle: Text(t('out_lock_sub')),
+              value: _st.locked,
+              onChanged: _setLock,
+            ),
+            Text(t('out_hint'), style: small),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _import() async {
@@ -305,8 +499,11 @@ class _EqScreenState extends State<EqScreen> {
                   value: _enabled,
                   onChanged: _setEnabled,
                 ),
+                if (_st.bypass != null) _bypassBanner(),
                 const SizedBox(height: 8),
                 _typePicker(),
+                const SizedBox(height: 8),
+                _outputCard(),
                 const SizedBox(height: 16),
                 Text(t('profile'), style: Theme.of(context).textTheme.labelLarge),
                 DropdownButton<String>(

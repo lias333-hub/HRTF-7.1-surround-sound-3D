@@ -86,6 +86,24 @@ class _EngineScreenState extends State<EngineScreen> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _retry() async {
+    try {
+      await EngineApi.retry();
+    } catch (e) {
+      if (mounted) setState(() => _error = _msg(e));
+    }
+    await _refresh();
+  }
+
+  Future<void> _unassign(String key) async {
+    try {
+      await EngineApi.unassign(key);
+    } catch (e) {
+      if (mounted) setState(() => _error = _msg(e));
+    }
+    await _refresh();
+  }
+
   Future<void> _allowNotif() async {
     try {
       await EngineApi.notifRequest();
@@ -116,10 +134,17 @@ class _EngineScreenState extends State<EngineScreen> with WidgetsBindingObserver
             'n': '${s.eqBands}',
           });
     final outs = s.outputs.map((o) => OutputEntry(o.type, o.name).toString()).toList();
+    final prof = s.profile.isEmpty ? '—' : L10n.profileName(s.profile);
     return [
       _line(s.service ? Icons.check_circle_outline : Icons.pause_circle_outline,
           L10n.t(s.service ? 'eng_svc_on' : 'eng_svc_off')),
       _line(Icons.equalizer, eq),
+      _line(Icons.tune, L10n.f('eng_profile', {'p': prof})),
+      if (s.locked) _line(Icons.lock_outline, L10n.t('eng_lock_on')),
+      if (s.bypass != null)
+        _line(Icons.warning_amber_rounded,
+            '${L10n.t('byp_title')}. ${L10n.t(s.bypass == 'control_lost' ? 'byp_control' : 'byp_create')}',
+            error: true),
       _line(Icons.auto_awesome, L10n.t(s.fxActive ? 'eng_fx_on' : 'eng_fx_off')),
       _line(Icons.headphones,
           '${L10n.t('eng_out')}: ${outs.isEmpty ? L10n.t('di_none') : outs.join(' · ')}'),
@@ -170,6 +195,36 @@ class _EngineScreenState extends State<EngineScreen> with WidgetsBindingObserver
                   Text(t('eng_status'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   ..._statusLines(small),
+                  if (_status.bypass != null) ...[
+                    const SizedBox(height: 8),
+                    FilledButton.tonal(onPressed: _retry, child: Text(t('byp_retry'))),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(t('eng_assign_title'), style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  if (_status.assignments.isEmpty)
+                    Text(t('eng_assign_none'), style: small)
+                  else
+                    for (final a in _status.assignments)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.headphones),
+                        title: Text(OutputEntry(a.type, a.name).toString()),
+                        subtitle: Text(L10n.profileName(a.profile)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _unassign(a.key),
+                        ),
+                      ),
                 ],
               ),
             ),

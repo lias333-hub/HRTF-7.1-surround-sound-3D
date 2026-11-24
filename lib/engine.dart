@@ -41,6 +41,12 @@ enum EqBackend { system, dynamics }
 /// What the user may choose: 'system', 'dynamics' (Android 9+) or 'auto' (dynamics if it can be created).
 const kBackendPrefs = ['system', 'dynamics', 'auto'];
 
+/// One audio output: its saved-table key ("type|name"), the AudioDeviceInfo type and the product name.
+typedef OutputRef = ({String key, int type, String name});
+
+/// "This output uses that saved profile".
+typedef Assignment = ({String key, int type, String name, String profile});
+
 /// Equalizer bridge. Two interchangeable back ends sit behind it:
 /// the system [EqBackend.system] equalizer (few bands, works on old Android) and
 /// [EqBackend.dynamics] (one real band per UI band plus a limiter, Android 9+).
@@ -73,24 +79,58 @@ class EqEngine {
     return backend = EqBackend.system;
   }
 
-  /// Sends the profile to whichever back end is running.
+  /// Millibel levels for the system equalizer's real bands; empty when another back end is running.
+  List<int> _levels(EqProfile p) {
+    final i = info;
+    if (backend != EqBackend.system || i == null) return const [];
+    return deviceLevels(
+      gains: p.gains,
+      preamp: p.preamp,
+      lows: i.lows,
+      highs: i.highs,
+      centers: i.centers,
+      minMb: i.minMb,
+      maxMb: i.maxMb,
+    );
+  }
+
+  /// Sends the profile to whichever back end is running. The profile's name travels along so the native
+  /// side always knows which saved profile is applied.
   Future<void> apply(EqProfile p) async {
     if (backend == EqBackend.dynamics) {
-      await _ch.invokeMethod<void>('dpGains', {'gains': p.gains, 'preamp': p.preamp});
+      await _ch.invokeMethod<void>(
+          'dpGains', {'gains': p.gains, 'preamp': p.preamp, 'profile': p.name});
       return;
     }
-    final i = info;
-    if (backend == EqBackend.system && i != null) {
-      final levels = deviceLevels(
-        gains: p.gains,
-        preamp: p.preamp,
-        lows: i.lows,
-        highs: i.highs,
-        centers: i.centers,
-        minMb: i.minMb,
-        maxMb: i.maxMb,
-      );
-      await _ch.invokeMethod<void>('setLevels', {'levels': levels});
+    if (backend == EqBackend.system && info != null) {
+      await _ch.invokeMethod<void>('setLevels', {'levels': _levels(p), 'profile': p.name});
+    }
+  }
+
+  /// Saves "[p] is the profile for output [o]" in the native table (it switches by itself when the output changes).
+  Future<void> assign(OutputRef o, EqProfile p) => _ch.invokeMethod<void>('outAssign', {
+        'key': o.key,
+        'type': o.type,
+        'name': o.name,
+        'profile': p.name,
+        'gains': p.gains,
+        'preamp': p.preamp,
+        'levels': _levels(p),
+      });
+
+  /// Re-sends every saved assignment with the current contents of its profile (the native table keeps a copy),
+  /// and drops the ones whose profile no longer exists. Needs a running back end: the levels depend on it.
+  Future<void> resync(List<Assignment> list, List<EqProfile> all) async {
+    for (final a in list) {
+      EqProfile? p;
+      for (final e in all) {
+        if (e.name == a.profile) p = e;
+      }
+      if (p == null) {
+        await EngineApi.unassign(a.key);
+      } else {
+        await assign((key: a.key, type: a.type, name: a.name), p);
+      }
     }
   }
 
@@ -151,6 +191,13 @@ class EngineStatus {
     required this.fxActive,
     required this.outputs,
     this.error,
+    this.profile = '',
+    this.locked = false,
+    this.bypass,
+    this.output,
+    this.assignments = const [],
+    this.switchSeq = 0,
+    this.switched = false,
   });
 
   /// The foreground service is running.
@@ -167,6 +214,27 @@ class EngineStatus {
   final List<({int type, String name})> outputs;
   final String? error;
 
+  /// Name of the saved profile that was applied last ('' = the native side was never told).
+  final String profile;
+
+  /// Manual lock: the profile does not change by itself when the output changes.
+  final bool locked;
+
+  /// Why the sound is not being processed although the user wants it: 'create_failed', 'control_lost', or null.
+  final String? bypass;
+
+  /// The output the music most likely goes to now (null when none is usable or below Android 6).
+  final OutputRef? output;
+
+  /// The saved "output -> profile" table.
+  final List<Assignment> assignments;
+
+  /// Grows each time the native side switched profile by itself because the output changed.
+  final int switchSeq;
+
+  /// Only in the answer to [EngineApi.outputSync]: that call switched the profile.
+  final bool switched;
+
   static const none = EngineStatus(
     service: false,
     wanted: false,
@@ -177,19 +245,44 @@ class EngineStatus {
     outputs: [],
   );
 
-  factory EngineStatus.fromMap(Map<dynamic, dynamic> m) => EngineStatus(
-        service: m['service'] == true,
-        wanted: m['wanted'] == true,
-        eqKind: '${m['eqKind'] ?? 'none'}',
-        eqEnabled: m['eqEnabled'] == true,
-        eqBands: (m['eqBands'] as num?)?.toInt() ?? 0,
-        fxActive: m['fxActive'] == true,
-        outputs: [
-          for (final o in (m['outputs'] as List?) ?? const [])
-            (type: ((o as Map)['type'] as num).toInt(), name: '${o['name'] ?? ''}'),
-        ],
-        error: m['error'] as String?,
-      );
+  factory EngineStatus.fromMap(Map<dynamic, dynamic> m) {
+    final out = m['output'];
+    return EngineStatus(
+      service: m['service'] == true,
+      wanted: m['wanted'] == true,
+      eqKind: '${m['eqKind'] ?? 'none'}',
+      eqEnabled: m['eqEnabled'] == true,
+      eqBands: (m['eqBands'] as num?)?.toInt() ?? 0,
+      fxActive: m['fxActive'] == true,
+      outputs: [
+        for (final o in (m['outputs'] as List?) ?? const [])
+          (type: ((o as Map)['type'] as num).toInt(), name: '${o['name'] ?? ''}'),
+      ],
+      error: m['error'] as String?,
+      profile: '${m['profile'] ?? ''}',
+      locked: m['locked'] == true,
+      bypass: m['bypass'] as String?,
+      output: out is Map
+          ? (
+              key: '${out['key'] ?? ''}',
+              type: ((out['type'] as num?) ?? 0).toInt(),
+              name: '${out['name'] ?? ''}',
+            )
+          : null,
+      assignments: [
+        for (final a in (m['assignments'] as List?) ?? const [])
+          if (a is Map)
+            (
+              key: '${a['key'] ?? ''}',
+              type: ((a['type'] as num?) ?? 0).toInt(),
+              name: '${a['name'] ?? ''}',
+              profile: '${a['profile'] ?? ''}',
+            ),
+      ],
+      switchSeq: (m['switchSeq'] as num?)?.toInt() ?? 0,
+      switched: m['switched'] == true,
+    );
+  }
 }
 
 /// Foreground service, permissions, battery settings and live status.
@@ -216,9 +309,31 @@ class EngineApi {
         'title': L10n.t('notif_title'),
         'text': L10n.t('notif_text'),
         'stop': L10n.t('notif_stop'),
+        'bypass': L10n.t('notif_bypass'),
       });
 
   static Future<void> svcStop() => _ch.invokeMethod<void>('svcStop');
+
+  /// Right after the equalizer was started: lets the native side pick the profile assigned to the current output
+  /// (when the output changed since last time and nothing is locked). [EngineStatus.switched] says whether it did.
+  static Future<EngineStatus> outputSync() async {
+    final m = await _ch.invokeMethod<Map<dynamic, dynamic>>('outSync');
+    return m == null ? EngineStatus.none : EngineStatus.fromMap(m);
+  }
+
+  static Future<void> unassign(String key) => _ch.invokeMethod<void>('outUnassign', {'key': key});
+
+  static Future<void> setLock(bool on) => _ch.invokeMethod<void>('lockSet', {'on': on});
+
+  /// Starts the return rule over: rebuild the effects now and, if that fails, keep retrying by itself.
+  static Future<void> retry() => _ch.invokeMethod<void>('retry');
+
+  /// When the app comes back to the screen while the sound is bypassed, try once more.
+  static Future<void> retryIfBypassed() async {
+    try {
+      if ((await status()).bypass != null) await retry();
+    } catch (_) {}
+  }
 
   /// 'na' (below Android 13), 'granted' or 'denied'.
   static Future<String> notifStatus() async =>

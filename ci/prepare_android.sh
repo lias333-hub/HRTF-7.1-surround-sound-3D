@@ -16,4 +16,12 @@ mkdir -p "$pkg_dir"
 cp native/*.kt "$pkg_dir/"
 cp native/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
 
+# JVM unit tests for the pure Kotlin logic (run with: cd android && ./gradlew :app:testDebugUnitTest).
+test_dir=android/app/src/test/kotlin/com/directionalaudio/directional_audio
+mkdir -p "$test_dir"
+cp native/test/*.kt "$test_dir/"
+if ! grep -q "junit:junit" android/app/build.gradle; then
+  printf "\ndependencies {\n    testImplementation 'junit:junit:4.13.2'\n}\n" >> android/app/build.gradle
+fi
+
 flutter pub get
