@@ -11,7 +11,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       L10n.setPref(lang, 'en');
       // Tall on purpose: the list is lazy, and longer translations push the bottom rows further down.
-      tester.view.physicalSize = const Size(1080, 4800);
+      tester.view.physicalSize = const Size(1080, 8000);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
 

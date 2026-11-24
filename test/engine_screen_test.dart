@@ -95,7 +95,7 @@ class _Native {
 }
 
 Future<void> _pump(WidgetTester tester, Widget home) async {
-  tester.view.physicalSize = const Size(1080, 4800);
+  tester.view.physicalSize = const Size(1080, 8000);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
