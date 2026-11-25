@@ -17,6 +17,8 @@ import android.os.Looper
 import io.flutter.plugin.common.EventChannel
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Owns every live audio effect, so they outlive the activity and can be rebuilt after the sound output
@@ -55,6 +57,12 @@ object EngineHub {
     private var fxActive = false
     private val fxOn = hashMapOf("bass" to false, "virt" to false, "loud" to false)
     private val fxVal = hashMapOf("bass" to 0, "virt" to 0, "loud" to 0)
+
+    // rolling event log (see EventLog): evidence for tests on real phones
+    private var log: EventLog? = null
+    private val logIo = Executors.newSingleThreadExecutor { r -> Thread(r, "da-eventlog").also { it.isDaemon = true } }
+    @Volatile
+    private var loggedBypass: String? = null
 
     private var running = false
     private var wanted = false
@@ -101,17 +109,47 @@ object EngineHub {
         if (appCtx == null) {
             appCtx = c.applicationContext
             try {
+                log = EventLog(File(c.applicationContext.filesDir, "events.log"), io = { logIo.execute(it) })
+            } catch (ignored: Exception) {
+            }
+            try {
                 val p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 wanted = p.getBoolean("wanted", false)
                 loadAssignments(p.getString("state", null))
             } catch (ignored: Exception) {
             }
+            logAdd("proc", "process started: wanted=$wanted slots=${slots.size} locked=$locked lastKey=${lastKey ?: "-"}")
         }
     }
+
+    // ---------------------------------------------------------------- event log
+
+    fun logAdd(tag: String, msg: String) {
+        try {
+            log?.add(tag, msg)
+        } catch (ignored: Exception) {
+        }
+    }
+
+    fun logText(): String = log?.text() ?: ""
+
+    fun logClear() {
+        log?.clear()
+        logAdd("log", "cleared")
+    }
+
+    /** Who/what produced the log: app build, phone, Android version and CPU type. */
+    fun logHeader(): String {
+        val abi = if (Build.VERSION.SDK_INT >= 21) Build.SUPPORTED_ABIS.firstOrNull() ?: "?" else "?"
+        return "${Build.MANUFACTURER} ${Build.MODEL} | Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) | $abi"
+    }
+
+    private fun desc(o: OutputRouting.Out) = "${o.type}:${o.name}"
 
     // ---------------------------------------------------------------- status for the UI
 
     fun markService(v: Boolean) {
+        if (running != v) logAdd("svc", "service running=$v")
         running = v
         if (!v) maybeUnwatch()
         emit()
@@ -119,6 +157,7 @@ object EngineHub {
 
     /** "The user wants the service running": survives process death so the app can restart it. */
     fun setWanted(v: Boolean) {
+        if (wanted != v) logAdd("svc", "wanted=$v")
         wanted = v
         try {
             appCtx?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()?.putBoolean("wanted", v)?.apply()
@@ -182,6 +221,11 @@ object EngineHub {
 
     fun emit() {
         val m = status()
+        val b = m["bypass"] as String?
+        if (b != loggedBypass) {
+            logAdd("bypass", "${loggedBypass ?: "none"} -> ${b ?: "none"}")
+            loggedBypass = b
+        }
         main.post {
             try {
                 sink?.success(m)
@@ -229,7 +273,12 @@ object EngineHub {
         releaseEq()
         releaseDp()
         eqKind = "none"
-        val e = Equalizer(0, session)
+        val e = try {
+            Equalizer(0, session)
+        } catch (t: Throwable) {
+            logAdd("eq", "system create FAILED session=$session: ${t.message ?: t.javaClass.simpleName}")
+            throw t
+        }
         e.enabled = false
         eq = e
         watchControl(e)
@@ -239,6 +288,7 @@ object EngineHub {
         eqBands = e.numberOfBands.toInt()
         lastError = null
         createFailed = false
+        logAdd("eq", "system started session=$session bands=$eqBands")
         persist()
         watchRoutes()
         emit()
@@ -248,7 +298,7 @@ object EngineHub {
     /** [profileName]: which saved profile these levels come from, so the hub knows what is applied. */
     fun setSysLevels(levels: List<Int>, profileName: String? = null) {
         sysLevels = levels
-        if (profileName != null) profile = profileName
+        noteProfile(profileName)
         try {
             applySysLevels()
         } catch (e: Exception) {
@@ -256,6 +306,13 @@ object EngineHub {
         }
         persist()
         emit()
+    }
+
+    /** The user (Dart) says which profile is now applied; log only real changes, not every slider move. */
+    private fun noteProfile(name: String?) {
+        if (name == null) return
+        if (name != profile) logAdd("profile", "'$profile' -> '$name' (by user)")
+        profile = name
     }
 
     private fun applySysLevels() {
@@ -287,12 +344,14 @@ object EngineHub {
             eqBands = centers.size
             lastError = null
             createFailed = false
+            logAdd("eq", "dynamics started bands=${centers.size}")
             persist()
             watchRoutes()
             emit()
             mapOf("ok" to true, "bands" to centers.size)
         } catch (t: Throwable) {
             releaseDp()
+            logAdd("eq", "dynamics create FAILED: ${t.message ?: t.javaClass.simpleName}")
             mapOf("ok" to false, "error" to (t.message ?: t.javaClass.simpleName))
         }
     }
@@ -313,7 +372,7 @@ object EngineHub {
     fun setDpGains(gains: List<Double>, preamp: Double, profileName: String? = null) {
         dpGains = gains
         dpPreamp = preamp
-        if (profileName != null) profile = profileName
+        noteProfile(profileName)
         try {
             if (Build.VERSION.SDK_INT >= 28) applyDp()
         } catch (t: Throwable) {
@@ -383,7 +442,9 @@ object EngineHub {
             effective = effective || setDpEnabled(on)
         } catch (t: Throwable) {
             lastError = t.message ?: t.javaClass.simpleName
+            logAdd("eq", "enable=$on FAILED: $lastError")
         }
+        logAdd("eq", "enabled=$on effective=$effective kind=$eqKind")
         persist()
         emit()
         return effective
@@ -397,6 +458,7 @@ object EngineHub {
     }
 
     fun stopEq() {
+        logAdd("eq", "stopped (was $eqKind)")
         releaseEq()
         releaseDp()
         eqKind = "none"
@@ -465,6 +527,7 @@ object EngineHub {
         fxRelease()
         val out = fxCreate()
         fxActive = true
+        logAdd("fx", "started: $out")
         persist()
         watchRoutes()
         emit()
@@ -514,6 +577,7 @@ object EngineHub {
     }
 
     fun fxStop() {
+        logAdd("fx", "stopped")
         fxRelease()
         fxActive = false
         persist()
@@ -551,8 +615,10 @@ object EngineHub {
         } catch (ignored: Exception) {
             false
         }
+        if (controlLost) logAdd("control", "created WITHOUT control (another app owns this effect)")
         try {
             e.setControlStatusListener { _, granted ->
+                logAdd("control", "control ${if (granted) "GRANTED" else "LOST"}")
                 controlLost = !granted
                 if (controlLost) scheduleRetry() else cancelRetry()
                 emit()
@@ -563,8 +629,13 @@ object EngineHub {
 
     private fun scheduleRetry() {
         main.removeCallbacks(retryRunnable)
-        val d = OutputRouting.retryDelay(retryAttempt) ?: return
+        val d = OutputRouting.retryDelay(retryAttempt)
+        if (d == null) {
+            logAdd("retry", "gave up after $retryAttempt tries; waits for output change, app resume or the retry button")
+            return
+        }
         retryAttempt++
+        logAdd("retry", "try #$retryAttempt in ${d / 1000}s")
         main.postDelayed(retryRunnable, d)
     }
 
@@ -574,7 +645,8 @@ object EngineHub {
     }
 
     /** User pressed "retry", the app came back to the screen, or the output changed: start the return rule over. */
-    fun retryNow() {
+    fun retryNow(reason: String = "manual") {
+        logAdd("retry", "now ($reason)")
         cancelRetry()
         rebuild()
     }
@@ -618,6 +690,11 @@ object EngineHub {
         createFailed = err != null
         lastError = err
         lastRebuildMs = System.currentTimeMillis()
+        logAdd(
+            "rebuild",
+            "kind=$eqKind enabled=$eqEnabled fx=$fxActive -> ${if (err == null) "ok" else "ERROR $err"}" +
+                (if (controlLost) " controlLost" else "")
+        )
         // The return rule: while the sound is unprocessed, try again by itself (5 s, 15 s, 45 s), then wait for
         // the next output change, app resume or the user's retry button.
         if (createFailed || controlLost) scheduleRetry() else cancelRetry()
@@ -647,6 +724,7 @@ object EngineHub {
             }
             profile = o.optString("profile", "")
             loadAssignments(raw)
+            logAdd("proc", "restored saved state: kind=$eqKind enabled=$eqEnabled fx=$fxActive profile='$profile'")
             // The output may have changed while the process was dead: pick the profile for it, then rebuild.
             if (eqKind != "none" || fxActive) onRouteChange()
         } catch (ignored: Exception) {
@@ -744,17 +822,20 @@ object EngineHub {
     ) {
         if (key.isEmpty()) return
         slots[key] = Slot(key, type, name, profileName, gains, preamp, levels)
+        logAdd("slot", "assign $key -> '$profileName'")
         persist()
         emit()
     }
 
     fun unassignOutput(key: String) {
         slots.remove(key)
+        logAdd("slot", "remove $key")
         persist()
         emit()
     }
 
     fun setLocked(v: Boolean) {
+        if (locked != v) logAdd("lock", "locked=$v")
         locked = v
         persist()
         emit()
@@ -762,6 +843,7 @@ object EngineHub {
 
     private fun applySlot(s: Slot) {
         switchSeq++
+        logAdd("switch", "profile '$profile' -> '${s.profile}' for ${s.key}")
         profile = s.profile
         dpGains = s.gains
         dpPreamp = s.preamp
@@ -773,7 +855,8 @@ object EngineHub {
      * assigned to it into the remembered settings (the effects are updated by the caller). True when it switched.
      */
     private fun decideProfile(): Boolean {
-        val cur = OutputRouting.primary(currentOutputs())
+        val outs = currentOutputs()
+        val cur = OutputRouting.primary(outs)
         val curKey = if (cur == null) null else OutputRouting.key(cur)
         val slot = if (curKey == null) null else slots[curKey]
         var switched = false
@@ -781,6 +864,11 @@ object EngineHub {
             applySlot(slot)
             switched = true
         }
+        logAdd(
+            "route",
+            "main=${curKey ?: "none"} prev=${lastKey ?: "none"} locked=$locked slot=${if (slot == null) "none" else "'${slot.profile}'"} " +
+                "-> ${if (switched) "SWITCHED" else "kept '$profile'"} | outputs=[${outs.joinToString(", ") { desc(it) }}]"
+        )
         lastKey = curKey
         persist()
         return switched
@@ -812,12 +900,13 @@ object EngineHub {
     /** The debounced reaction to a device being added or removed. */
     fun onRouteChange() {
         decideProfile()
-        retryNow()
+        retryNow("output changed")
     }
 
-    private fun routeChanged() {
+    private fun routeChanged(what: String, devs: Array<out AudioDeviceInfo>?) {
         // Registering the callback reports every existing device once: ignore that burst.
         if (System.currentTimeMillis() - watchStartedMs < 1500) return
+        logAdd("device", "$what ${devs?.joinToString(", ") { "${it.type}:${it.productName}" } ?: "?"}")
         main.removeCallbacks(routeRunnable)
         main.postDelayed(routeRunnable, 700)
     }
@@ -830,11 +919,11 @@ object EngineHub {
             val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val cb = object : AudioDeviceCallback() {
                 override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-                    routeChanged()
+                    routeChanged("added", addedDevices)
                 }
 
                 override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-                    routeChanged()
+                    routeChanged("removed", removedDevices)
                 }
             }
             watchStartedMs = System.currentTimeMillis()

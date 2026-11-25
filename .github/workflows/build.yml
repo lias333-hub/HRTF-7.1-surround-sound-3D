@@ -24,6 +24,8 @@ jobs:
       - name: Kotlin unit tests
         run: cd android && ./gradlew :app:testDebugUnitTest --console=plain
       - run: flutter build apk --release
+      - name: Verify fixed test signing key
+        run: bash ci/check_signing.sh build/app/outputs/flutter-apk/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: directional-audio-apk

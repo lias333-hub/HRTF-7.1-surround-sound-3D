@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:directional_audio/app_info.dart';
 import 'package:directional_audio/engine_screen.dart';
 import 'package:directional_audio/eq_screen.dart';
 import 'package:directional_audio/strings.dart';
@@ -27,6 +28,10 @@ class _Native {
   int switchSeq = 0;
   Map<String, dynamic> sync = {}; // extra fields in the answer to outSync
   final args = <String, Object?>{}; // last arguments seen per method
+
+  // v0.4.1 event log
+  String logHeader = 'Samsung SM-J730F | Android 9 (API 28) | armeabi-v7a';
+  String logText = '';
 
   Map<String, dynamic> get status => {
         'service': running,
@@ -68,6 +73,11 @@ class _Native {
         return null;
       case 'retry':
         bypass = null;
+        return null;
+      case 'logGet':
+        return {'header': logHeader, 'text': logText};
+      case 'logClear':
+        logText = '';
         return null;
       case 'status':
         return status;
@@ -347,5 +357,60 @@ void main() {
     expect((native.args['outUnassign'] as Map)['key'], '3|Headset');
     expect(find.text(L10n.t('eng_assign_none')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+  // ------------------------------------------------------------------ v0.4.1: event log card
+
+  testWidgets('EngineScreen: an empty event log says so', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    mock(tester);
+    L10n.setPref('en', 'en');
+    await _pump(tester, const EngineScreen());
+    expect(find.text(L10n.t('log_title')), findsOneWidget);
+    expect(find.text(L10n.t('log_empty')), findsOneWidget);
+  });
+
+  for (final lang in ['en', 'ar']) {
+    testWidgets('EngineScreen: the log shows the newest 40 lines, copy takes all of it with the header ($lang)',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      mock(tester);
+      native.logText = [for (var i = 1; i <= 60; i++) '11-25 15:00:00.000 [route] event $i'].join('\n');
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (c) async {
+        if (c.method == 'Clipboard.setData') copied = (c.arguments as Map)['text'] as String?;
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+      L10n.setPref(lang, 'en');
+      await _pump(tester, const EngineScreen());
+
+      final shown = tester.widget<SelectableText>(find.byType(SelectableText)).data!.split('\n');
+      expect(shown.length, 40);
+      expect(shown.first, endsWith('event 21'));
+      expect(shown.last, endsWith('event 60'));
+
+      await tester.tap(find.text(L10n.t('log_copy')));
+      await tester.pumpAndSettle();
+      expect(copied, startsWith('Directional Audio $kAppVersion | Samsung SM-J730F | Android 9'));
+      expect(copied!.split('\n').length, 61); // the header line + all 60 events
+      expect(copied, contains('event 1\n'));
+      expect(find.text(L10n.t('log_copied')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('EngineScreen: clearing the log asks the native side and empties the view', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    mock(tester);
+    native.logText = '11-25 15:00:00.000 [proc] process started';
+    L10n.setPref('en', 'en');
+    await _pump(tester, const EngineScreen());
+    expect(find.byType(SelectableText), findsOneWidget);
+
+    await tester.tap(find.text(L10n.t('log_clear')));
+    await tester.pumpAndSettle();
+    expect(native.calls, contains('logClear'));
+    expect(find.byType(SelectableText), findsNothing);
+    expect(find.text(L10n.t('log_empty')), findsOneWidget);
   });
 }

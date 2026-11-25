@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'device_report.dart';
 import 'engine.dart';
+import 'event_log_card.dart';
 import 'strings.dart';
 
 /// Background service, permissions, battery settings, and a live view of what the native engine is doing.
@@ -250,6 +251,7 @@ class _EngineScreenState extends State<EngineScreen> with WidgetsBindingObserver
                   : FilledButton.tonal(onPressed: _fixBattery, child: Text(t('eng_fix'))),
             ),
           ),
+          const EventLogCard(),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),

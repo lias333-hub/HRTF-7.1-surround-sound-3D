@@ -11,6 +11,7 @@ class _Native {
   final calls = <MethodCall>[];
   Map<String, dynamic> dp = {'ok': true, 'bands': 10};
   Map<String, dynamic> status = {};
+  Map<String, dynamic>? log; // answer to logGet
 
   Future<Object?> handle(MethodCall c) async {
     calls.add(c);
@@ -19,6 +20,8 @@ class _Native {
         return status;
       case 'dpStart':
         return dp;
+      case 'logGet':
+        return log;
       case 'start':
         return {
           'bands': 5,
@@ -147,7 +150,8 @@ void main() {
       return native.names;
     }
 
-    expect(await run(true, false), ['status', 'svcStart']);
+    // the restart is also written to the event log, before the service is started
+    expect(await run(true, false), ['status', 'logAdd', 'svcStart']);
     expect(await run(true, true), ['status']);
     expect(await run(false, false), ['status']);
   });
@@ -276,5 +280,41 @@ void main() {
     native.status = {'eqKind': 'dynamics', 'bypass': 'create_failed'};
     await EngineApi.retryIfBypassed();
     expect(native.names, ['status', 'retry']);
+  });
+  // ------------------------------------------------------------------ v0.4.1 (event log)
+
+  test('retry says why it was asked (button by default, "app resume" from the shell)', () async {
+    await EngineApi.retry();
+    expect(native.calls.last.method, 'retry');
+    expect(native.calls.last.arguments, {'reason': 'manual'});
+
+    native.calls.clear();
+    native.status = {'eqKind': 'dynamics', 'bypass': 'control_lost'};
+    await EngineApi.retryIfBypassed();
+    expect(native.calls.last.arguments, {'reason': 'app resume'});
+  });
+
+  test('eventLog returns the header and the text; clear and logEvent reach the native side', () async {
+    native.log = {'header': 'Samsung SM-J730F | Android 9 (API 28) | armeabi-v7a', 'text': 'l1\nl2'};
+    final l = await EngineApi.eventLog();
+    expect(l.header, startsWith('Samsung SM-J730F'));
+    expect(l.text, 'l1\nl2');
+
+    await EngineApi.clearEventLog();
+    await EngineApi.logEvent('app', 'hello');
+    expect(native.names, ['logGet', 'logClear', 'logAdd']);
+    expect(native.calls.last.arguments, {'tag': 'app', 'msg': 'hello'});
+  });
+
+  test('eventLog is empty (and does not throw) when the native side is missing or answers nothing', () async {
+    final l = await EngineApi.eventLog(); // the mock answers null
+    expect((l.header, l.text), ('', ''));
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, null); // no handler at all: MissingPluginException
+    final m = await EngineApi.eventLog();
+    expect((m.header, m.text), ('', ''));
+    await EngineApi.clearEventLog();
+    await EngineApi.logEvent('app', 'x');
   });
 }

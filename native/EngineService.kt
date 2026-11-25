@@ -39,6 +39,8 @@ class EngineService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A null intent means the system restarted the service after killing the process.
+        EngineHub.logAdd("svc", "onStartCommand action=${intent?.action ?: "-"} systemRestart=${intent == null}")
         if (intent?.action == ACTION_STOP) {
             EngineHub.setWanted(false)
             stopSelf()

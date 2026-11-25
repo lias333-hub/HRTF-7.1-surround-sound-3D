@@ -98,7 +98,22 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                         "retry" -> {
-                            EngineHub.retryNow()
+                            EngineHub.retryNow(call.argument<String>("reason") ?: "manual")
+                            result.success(null)
+                        }
+                        // --- event log (evidence from real phones)
+                        "logGet" -> result.success(
+                            mapOf("header" to EngineHub.logHeader(), "text" to EngineHub.logText())
+                        )
+                        "logClear" -> {
+                            EngineHub.logClear()
+                            result.success(null)
+                        }
+                        "logAdd" -> {
+                            EngineHub.logAdd(
+                                call.argument<String>("tag") ?: "app",
+                                call.argument<String>("msg") ?: ""
+                            )
                             result.success(null)
                         }
                         // --- shared

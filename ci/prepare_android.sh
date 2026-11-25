@@ -11,6 +11,14 @@ if [ ! -d android ]; then
   rm -rf "$tmp"
 fi
 
+# Fixed TEST signing key. Without it every fresh CI box generates its own debug key, so an update APK
+# cannot be installed over the previous one. The key is public (the repo is public): test builds only,
+# NEVER for a real release (that gets a secret key later). Set DA_KEEP_LOCAL_KEY=1 to keep your own debug key.
+if [ -z "${DA_KEEP_LOCAL_KEY:-}" ]; then
+  mkdir -p "$HOME/.android"
+  cp ci/test-signing/debug.keystore "$HOME/.android/debug.keystore"
+fi
+
 pkg_dir=android/app/src/main/kotlin/com/directionalaudio/directional_audio
 mkdir -p "$pkg_dir"
 cp native/*.kt "$pkg_dir/"

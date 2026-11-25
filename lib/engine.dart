@@ -326,12 +326,37 @@ class EngineApi {
   static Future<void> setLock(bool on) => _ch.invokeMethod<void>('lockSet', {'on': on});
 
   /// Starts the return rule over: rebuild the effects now and, if that fails, keep retrying by itself.
-  static Future<void> retry() => _ch.invokeMethod<void>('retry');
+  static Future<void> retry({String reason = 'manual'}) =>
+      _ch.invokeMethod<void>('retry', {'reason': reason});
 
   /// When the app comes back to the screen while the sound is bypassed, try once more.
   static Future<void> retryIfBypassed() async {
     try {
-      if ((await status()).bypass != null) await retry();
+      if ((await status()).bypass != null) await retry(reason: 'app resume');
+    } catch (_) {}
+  }
+
+  /// The engine's event log: [header] says which phone/Android, [text] is the rolling list of events
+  /// (oldest first). Empty when the native side is not there (tests, desktop).
+  static Future<({String header, String text})> eventLog() async {
+    try {
+      final m = await _ch.invokeMethod<Map<dynamic, dynamic>>('logGet');
+      return (header: '${m?['header'] ?? ''}', text: '${m?['text'] ?? ''}');
+    } on MissingPluginException {
+      return (header: '', text: '');
+    }
+  }
+
+  static Future<void> clearEventLog() async {
+    try {
+      await _ch.invokeMethod<void>('logClear');
+    } on MissingPluginException {}
+  }
+
+  /// Adds a line written by the app side (for example "service restarted after the app came back").
+  static Future<void> logEvent(String tag, String msg) async {
+    try {
+      await _ch.invokeMethod<void>('logAdd', {'tag': tag, 'msg': msg});
     } catch (_) {}
   }
 
@@ -352,7 +377,10 @@ class EngineApi {
   static Future<void> resumeIfWanted() async {
     try {
       final s = await status();
-      if (s.wanted && !s.service) await svcStart();
+      if (s.wanted && !s.service) {
+        await logEvent('app', 'service was wanted but not running: restarting it');
+        await svcStart();
+      }
     } catch (_) {}
   }
 }

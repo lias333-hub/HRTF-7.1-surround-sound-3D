@@ -224,6 +224,13 @@ class L10n {
     'eng_lock_on': 'Profile lock: on',
     'eng_assign_title': 'Profiles per output',
     'eng_assign_none': 'None yet. Assign one from the equalizer tab.',
+    'log_title': 'Event log',
+    'log_hint': 'What the engine did: output changes, profile switches, effect rebuilds, bypass. After each test on your phone, copy it and send it to the developer.',
+    'log_copy': 'Copy',
+    'log_copied': 'Copied',
+    'log_clear': 'Clear',
+    'log_refresh': 'Refresh',
+    'log_empty': 'No events yet.',
   };
 
   static const Map<String, String> _ar = {
@@ -390,6 +397,13 @@ class L10n {
     'eng_lock_on': 'قفل الملف: مفعّل',
     'eng_assign_title': 'ملف لكل مخرج',
     'eng_assign_none': 'لا شيء بعد. عيّن ملفاً من تبويب المعادل.',
+    'log_title': 'سجل الأحداث',
+    'log_hint': 'يسجّل ما فعله المحرّك: تغيّر السماعة وتبديل البروفايل وإعادة بناء المؤثرات والتجاوز. بعد كل تجربة على هاتفك انسخه وأرسله للمطوّر.',
+    'log_copy': 'نسخ',
+    'log_copied': 'تم النسخ',
+    'log_clear': 'مسح',
+    'log_refresh': 'تحديث',
+    'log_empty': 'لا أحداث بعد.',
   };
 
   static const Map<String, String> _fr = {
@@ -556,6 +570,13 @@ class L10n {
     'eng_lock_on': 'Verrouillage du profil : activé',
     'eng_assign_title': 'Profils par sortie',
     'eng_assign_none': 'Aucun pour l\'instant. Associez-en un depuis l\'onglet égaliseur.',
+    'log_title': 'Journal des événements',
+    'log_hint': 'Ce que le moteur a fait : changements de sortie, bascules de profil, reconstructions des effets, contournement. Après chaque test sur votre téléphone, copiez-le et envoyez-le au développeur.',
+    'log_copy': 'Copier',
+    'log_copied': 'Copié',
+    'log_clear': 'Effacer',
+    'log_refresh': 'Actualiser',
+    'log_empty': 'Aucun événement pour l\'instant.',
   };
 
   static const Map<String, String> _es = {
@@ -723,6 +744,13 @@ class L10n {
     'eng_lock_on': 'Bloqueo de perfil: activado',
     'eng_assign_title': 'Perfiles por salida',
     'eng_assign_none': 'Ninguno todavía. Asigna uno desde la pestaña del ecualizador.',
+    'log_title': 'Registro de eventos',
+    'log_hint': 'Lo que hizo el motor: cambios de salida, cambios de perfil, reconstrucciones de efectos, derivación. Después de cada prueba en tu teléfono, cópialo y envíalo al desarrollador.',
+    'log_copy': 'Copiar',
+    'log_copied': 'Copiado',
+    'log_clear': 'Borrar',
+    'log_refresh': 'Actualizar',
+    'log_empty': 'Aún no hay eventos.',
   };
 
   static const Map<String, String> _tr = {
@@ -889,5 +917,12 @@ class L10n {
     'eng_lock_on': 'Profil kilidi: açık',
     'eng_assign_title': 'Çıkış başına profiller',
     'eng_assign_none': 'Henüz yok. Ekolayzer sekmesinden bir tane atayın.',
+    'log_title': 'Olay günlüğü',
+    'log_hint': 'Motorun yaptıkları: çıkış değişiklikleri, profil geçişleri, efekt yeniden kurulumları, atlama. Telefonunuzdaki her testten sonra kopyalayıp geliştiriciye gönderin.',
+    'log_copy': 'Kopyala',
+    'log_copied': 'Kopyalandı',
+    'log_clear': 'Temizle',
+    'log_refresh': 'Yenile',
+    'log_empty': 'Henüz olay yok.',
   };
 }
