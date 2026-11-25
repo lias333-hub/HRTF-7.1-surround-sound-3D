@@ -86,9 +86,7 @@ class EventLogTest {
 
     @Test
     fun anUnwritableFileNeverThrows() {
-        val dir = File.createTempFile("d", "")
-        dir.delete()
-        dir.mkdir()
+        val dir = java.nio.file.Files.createTempDirectory("evlog").toFile()
         dir.deleteOnExit()
         val log = EventLog(dir, tz = utc) // a directory is not a writable log file
         log.add("t", "still works in memory")
