@@ -83,8 +83,9 @@ Singleton يملك كل المؤثرات الحية (وليس الـActivity)، 
 
 ### 4.5 الجسر Flutter ↔ Kotlin
 
-- **MethodChannel `directional/eq`:** `start, setLevels(+profile), dpProbe, dpStart, dpGains(+profile), setEnabled, stop, deviceInfo, fxStart, fxSet, fxStop, svcStart(+bypass), svcStop, status, notifStatus, notifRequest, batteryIgnored, batteryRequest, tone, toneStop` و**(v0.4)** `outAssign, outUnassign, outSync, lockSet, retry`.
+- **MethodChannel `directional/eq`:** `start, setLevels(+profile), dpProbe, dpStart, dpGains(+profile), setEnabled, stop, deviceInfo, fxStart, fxSet, fxStop, svcStart(+bypass), svcStop, status, notifStatus, notifRequest, batteryIgnored, batteryRequest, tone, toneStop` و**(v0.4)** `outAssign, outUnassign, outSync, lockSet, retry` و**(v0.4.1)** `logGet` (يعيد `{header, text}`)، `logClear`، `logAdd(tag,msg)`، و`retry` يقبل `reason` (`manual` / `app resume` / `output changed` / `restored after process restart`).
 - **EventChannel `directional/status`:** يبث حالة المحرك من `EngineHub.emit()` إلى `EngineApi.stream()`. حقول الحالة (v0.4): `profile, switchSeq, locked, bypass, output{key,type,name}, assignments[]` إضافة للحقول السابقة؛ و`outSync` يضيف `switched`.
+- **سجل الأحداث (v0.4.1):** وسوم: `proc` (بدء العملية/استعادة)، `svc`، `device` (إضافة/إزالة جهاز صوت)، `route` (المخرج الأساسي + القرار + قائمة المخارج)، `switch`، `profile`، `slot`، `lock`، `eq`، `fx`، `rebuild`، `control`، `bypass`، `retry`، `app`، `log`. **لا يُكتب شيء من مسار الصوت** (أحداث نادرة فقط) فلا أثر على السرعة؛ كتابة الملف على خيط خلفي واحد.
 - **أخطاء:** الأخطاء تعود كـ `PlatformException('EQ_ERROR', …)`؛ فشل Dynamics الصريح يعود `DP_FAILED`.
 
 ### 4.6 صلاحيات AndroidManifest (`native/AndroidManifest.xml`)
@@ -120,20 +121,24 @@ lib/                      واجهة Flutter (≈3,000 سطر)
   settings_screen.dart / language_sheet.dart
   store.dart              تخزين SharedPreferences (user, working, selected, enabled, backend, lang, fx)
   strings.dart            L10n: جداول 5 لغات + fallback إنجليزي (≈ 900 سطر)
-  app_info.dart           kAppVersion = '0.4.0'
+  app_info.dart           kAppVersion = '0.4.1'
+  event_log_card.dart     بطاقة سجل الأحداث (عرض آخر 40 سطراً، نسخ الكل مع ترويسة الجهاز، تحديث، مسح)
 native/                   ملفات Kotlin والـManifest (تُنسخ إلى android/ عند البناء)
   EngineHub.kt · EngineService.kt · MainActivity.kt · AndroidManifest.xml
+  EventLog.kt             سجل أحداث دائري (300 سطر) بملف files/events.log يبقى بعد قتل العملية؛ بلا Android (اختُبر JUnit)؛ الكتابة على خيط خلفي
   OutputRouting.kt        منطق نقي بلا Android: أولوية المخرج، المفتاح، متى يُبدَّل الملف، جدول إعادة المحاولة
-  test/OutputRoutingTest.kt   10 اختبارات JUnit (تُنسخ إلى android/app/src/test عند البناء)
-test/                     7 ملفات اختبار Dart، 56 اختباراً كلها تنجح
+  test/OutputRoutingTest.kt (10) · test/EventLogTest.kt (7)   اختبارات JUnit (تُنسخ إلى android/app/src/test عند البناء)
+test/                     7 ملفات اختبار Dart، 63 اختباراً كلها تنجح
 ci/
-  prepare_android.sh      يولّد android/ (غير مُلتزَم به) ويُسقط native/*.kt فوقه
+  prepare_android.sh      يولّد android/ (غير مُلتزَم به) ويُسقط native/*.kt فوقه، وينسخ مفتاح التوقيع الثابت إلى ~/.android/debug.keystore
+  check_signing.sh        يفشل إن لم يكن الـAPK موقّعاً بالمفتاح التجريبي الثابت (يُشغَّل في build.yml)
+  test-signing/debug.keystore   مفتاح تجريبي **علني** (alias androiddebugkey، كلمة السر android) — للتجارب فقط، لا للنشر
   devshell/               صندوق البناء التفاعلي (client.sh, loop.sh, bin/emu, bin/dsync …)
 .github/workflows/
   build.yml               CI على push إلى main: analyze + test + build APK
   dev-shell.yml           الصندوق التفاعلي على فرع dev-shell
-docs/                     هذه الملفات
-pubspec.yaml              الاسم directional_audio، 0.4.0+5، تبعية وحيدة: shared_preferences ^2.2.3
+docs/                     هذه الملفات (MANIFEST، CHECKPOINT، NOTEBOOK، IDEAS_REGISTRY، EXPERIMENTS)
+pubspec.yaml              الاسم directional_audio، 0.4.1+6، تبعية وحيدة: shared_preferences ^2.2.3
 ```
 
 > مجلد `android/` **غير موجود في المستودع**؛ يُولَّد في كل بناء بـ `ci/prepare_android.sh`.
@@ -162,7 +167,7 @@ ci/devshell/client.sh status | stop
 - Flutter **3.22.0** / Dart **3.4**. الزمن: بناء ≈ 20–135 ث. يلزم **JDK 17** لـGradle 7.x (الافتراضي على الصندوق JDK 25 ويفشل).
 
 ### 6.3 CI (`build.yml`)
-يعمل على push إلى `main` (إلا إن احتوت الرسالة `[skip ci]`): JDK 17 + Flutter 3.22.0 → `prepare_android.sh` → `flutter analyze` → `flutter test` → **اختبارات Kotlin** (`cd android && ./gradlew :app:testDebugUnitTest`) → `flutter build apk --release` → رفع الـAPK كـartifact. **حالياً كل الـcommits تحمل `[skip ci]`** والبناء يجري على dev-shell.
+يعمل على push إلى `main` (إلا إن احتوت الرسالة `[skip ci]`): JDK 17 + Flutter 3.22.0 → `prepare_android.sh` → `flutter analyze` → `flutter test` → **اختبارات Kotlin** (`cd android && ./gradlew :app:testDebugUnitTest`) → `flutter build apk --release` → **`ci/check_signing.sh`** (التحقق من بصمة المفتاح الثابت) → رفع الـAPK كـartifact. **حالياً كل الـcommits تحمل `[skip ci]`** والبناء يجري على dev-shell.
 
 ### 6.4 اصطلاح الـcommit
 - نهاية الرسالة: `[skip ci]`.
@@ -175,6 +180,8 @@ ci/devshell/client.sh status | stop
 
 ### 6.5 تسليم الـAPK للمستخدم
 يُبنى على dev-shell، يُنسخ إلى `$DS_ART`، يُنزَّل، ويُرسل عبر `SendUserFile`. اسم الملف: `directional-audio-vX.Y.Z.apk`.
+- **التوقيع (منذ 0.4.1):** كل البناءات توقَّع بالمفتاح التجريبي الثابت، فتُثبَّت النسخ فوق بعضها. قبل 0.4.1 كان لكل صندوق مفتاح مختلف. **لا تُغيّر `ci/test-signing/debug.keystore`** وإلا انكسر التحديث على هاتف المستخدم. المفتاح علني؛ النشر الحقيقي بمفتاح سري لاحقاً.
+- `emu launch` يحتاج اسم الحزمة: `emu launch com.directionalaudio.directional_audio`. لقتل العملية على المحاكي: `emu sh 'su 0 kill -9 $(pidof com.directionalaudio.directional_audio)'`.
 
 ## 7. اصطلاحات الكود
 
@@ -215,3 +222,4 @@ ci/devshell/client.sh status | stop
 
 - 2026-11-21: إنشاء الملف (v0.3.0).
 - 2026-11-24: تحديث لـv0.4.0 (OutputRouting، جدول المخرجات، Bypass، قنوات جديدة، اختبارات Kotlin في CI، ملاحظات الصندوق).
+- 2026-11-25: تحديث لـv0.4.1 (التوقيع الثابت، EventLog، قنوات `logGet/logClear/logAdd` و`retry(reason)`، `EXPERIMENTS.md`).
