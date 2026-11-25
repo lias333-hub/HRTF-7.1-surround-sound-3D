@@ -527,7 +527,7 @@ object EngineHub {
         fxRelease()
         val out = fxCreate()
         fxActive = true
-        logAdd("fx", "started: $out")
+        logAdd("fx", "started: " + out.entries.joinToString(" ") { (k, v) -> "$k=" + ((v as? Map<*, *>)?.get("ok") ?: v) })
         persist()
         watchRoutes()
         emit()
@@ -726,7 +726,7 @@ object EngineHub {
             loadAssignments(raw)
             logAdd("proc", "restored saved state: kind=$eqKind enabled=$eqEnabled fx=$fxActive profile='$profile'")
             // The output may have changed while the process was dead: pick the profile for it, then rebuild.
-            if (eqKind != "none" || fxActive) onRouteChange()
+            if (eqKind != "none" || fxActive) onRouteChange("restored after process restart")
         } catch (ignored: Exception) {
         }
     }
@@ -898,9 +898,9 @@ object EngineHub {
     // ---------------------------------------------------------------- output (route) changes
 
     /** The debounced reaction to a device being added or removed. */
-    fun onRouteChange() {
+    fun onRouteChange(reason: String = "output changed") {
         decideProfile()
-        retryNow("output changed")
+        retryNow(reason)
     }
 
     private fun routeChanged(what: String, devs: Array<out AudioDeviceInfo>?) {
