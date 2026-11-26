@@ -32,4 +32,23 @@ if ! grep -q "junit:junit" android/app/build.gradle; then
   printf "\ndependencies {\n    testImplementation 'junit:junit:4.13.2'\n}\n" >> android/app/build.gradle
 fi
 
+# C++ core: copied into the Android module and built by CMake for every ABI Flutter targets (armeabi-v7a,
+# arm64-v8a, x86_64). Copied fresh each time so deleted source files do not linger. Idempotent gradle patch.
+rm -rf android/app/src/main/cpp
+mkdir -p android/app/src/main/cpp
+cp -r native/cpp/. android/app/src/main/cpp/
+if ! grep -q "src/main/cpp/CMakeLists.txt" android/app/build.gradle; then
+  cat >> android/app/build.gradle <<'GRADLE'
+
+// Directional Audio: build the C++ core (libdacore.so) with the Android NDK.
+android {
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+}
+GRADLE
+fi
+
 flutter pub get

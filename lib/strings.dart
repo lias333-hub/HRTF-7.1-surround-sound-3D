@@ -231,6 +231,14 @@ class L10n {
     'log_clear': 'Clear',
     'log_refresh': 'Refresh',
     'log_empty': 'No events yet.',
+    'cb_title': 'Core speed test',
+    'cb_hint': 'Measures how fast the native sound core runs on this phone: the equalizer and the filters a 3D effect will need. Keep the screen on and other apps closed, run it twice, then copy the result and send it to the developer.',
+    'cb_run': 'Run test',
+    'cb_running': 'Running {i} of {n}…',
+    'cb_unavail': 'The native core is not available on this phone: {e}',
+    'cb_not_opt': 'Warning: this build is not optimised, so these numbers mean nothing.',
+    'cb_est': '“7.1~” is a rough estimate: a full 7.1 simulation is about 4× the load of the 4-filter case. It counts the filters only, nothing else.',
+    'cb_done': 'Done. The results were also added to the event log.',
   };
 
   static const Map<String, String> _ar = {
@@ -404,6 +412,14 @@ class L10n {
     'log_clear': 'مسح',
     'log_refresh': 'تحديث',
     'log_empty': 'لا أحداث بعد.',
+    'cb_title': 'اختبار سرعة النواة',
+    'cb_hint': 'يقيس سرعة النواة الأصلية للصوت على هذا الهاتف: المعادل والفلاتر التي سيحتاجها التأثير ثلاثي الأبعاد. أبقِ الشاشة مضاءة وأغلق التطبيقات الأخرى، شغّله مرتين، ثم انسخ النتيجة وأرسلها للمطوّر.',
+    'cb_run': 'شغّل الاختبار',
+    'cb_running': 'جارٍ تشغيل {i} من {n}…',
+    'cb_unavail': 'النواة الأصلية غير متوفرة على هذا الهاتف: \u2066{e}\u2069',
+    'cb_not_opt': 'تحذير: هذا الإصدار غير محسَّن، لذا لا قيمة لهذه الأرقام.',
+    'cb_est': 'الرمز «7.1~» تقدير تقريبي: محاكاة 7.1 كاملة تساوي نحو 4 أضعاف حِمل حالة الفلاتر الأربعة. يحسب الفلاتر فقط ولا شيء غيرها.',
+    'cb_done': 'تم. أُضيفت النتائج أيضاً إلى سجل الأحداث.',
   };
 
   static const Map<String, String> _fr = {
@@ -577,6 +593,14 @@ class L10n {
     'log_clear': 'Effacer',
     'log_refresh': 'Actualiser',
     'log_empty': 'Aucun événement pour l\'instant.',
+    'cb_title': 'Test de vitesse du noyau',
+    'cb_hint': "Mesure la vitesse du noyau audio natif sur ce téléphone : l'égaliseur et les filtres dont un effet 3D aura besoin. Gardez l'écran allumé et fermez les autres applications, lancez le test deux fois, puis copiez le résultat et envoyez-le au développeur.",
+    'cb_run': 'Lancer le test',
+    'cb_running': 'Test {i} sur {n}…',
+    'cb_unavail': "Le noyau natif n'est pas disponible sur ce téléphone : {e}",
+    'cb_not_opt': "Attention : cette version n'est pas optimisée, ces chiffres ne veulent rien dire.",
+    'cb_est': '« 7.1~ » est une estimation grossière : une simulation 7.1 complète représente environ 4 fois la charge du cas à 4 filtres. Seuls les filtres sont comptés.',
+    'cb_done': 'Terminé. Les résultats ont aussi été ajoutés au journal des événements.',
   };
 
   static const Map<String, String> _es = {
@@ -751,6 +775,14 @@ class L10n {
     'log_clear': 'Borrar',
     'log_refresh': 'Actualizar',
     'log_empty': 'Aún no hay eventos.',
+    'cb_title': 'Prueba de velocidad del núcleo',
+    'cb_hint': 'Mide la velocidad del núcleo de audio nativo en este teléfono: el ecualizador y los filtros que necesitará un efecto 3D. Mantén la pantalla encendida y cierra las demás aplicaciones, ejecútala dos veces, luego copia el resultado y envíaselo al desarrollador.',
+    'cb_run': 'Ejecutar prueba',
+    'cb_running': 'Ejecutando {i} de {n}…',
+    'cb_unavail': 'El núcleo nativo no está disponible en este teléfono: {e}',
+    'cb_not_opt': 'Aviso: esta compilación no está optimizada, así que estas cifras no significan nada.',
+    'cb_est': '«7.1~» es una estimación aproximada: una simulación 7.1 completa supone unas 4 veces la carga del caso de 4 filtros. Solo cuenta los filtros, nada más.',
+    'cb_done': 'Listo. Los resultados también se añadieron al registro de eventos.',
   };
 
   static const Map<String, String> _tr = {
@@ -924,5 +956,13 @@ class L10n {
     'log_clear': 'Temizle',
     'log_refresh': 'Yenile',
     'log_empty': 'Henüz olay yok.',
+    'cb_title': 'Çekirdek hız testi',
+    'cb_hint': 'Yerel ses çekirdeğinin bu telefonda ne kadar hızlı çalıştığını ölçer: ekolayzır ve 3B bir efektin ihtiyaç duyacağı filtreler. Ekranı açık tutun, diğer uygulamaları kapatın, testi iki kez çalıştırın, sonra sonucu kopyalayıp geliştiriciye gönderin.',
+    'cb_run': 'Testi çalıştır',
+    'cb_running': '{i} / {n} çalışıyor…',
+    'cb_unavail': 'Yerel çekirdek bu telefonda kullanılamıyor: {e}',
+    'cb_not_opt': 'Uyarı: bu sürüm optimize edilmemiş, bu sayıların hiçbir anlamı yok.',
+    'cb_est': '“7.1~” kabaca bir tahmindir: tam bir 7.1 simülasyonu 4 filtreli durumun yaklaşık 4 katı yük getirir. Yalnızca filtreler sayılır, başka bir şey değil.',
+    'cb_done': 'Bitti. Sonuçlar olay günlüğüne de eklendi.',
   };
 }

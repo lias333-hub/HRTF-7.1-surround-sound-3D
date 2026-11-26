@@ -12,11 +12,13 @@ import android.media.audiofx.Equalizer
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.Process
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Thin bridge between Flutter and [EngineHub]. All live audio effects belong to the hub (not to the
@@ -29,6 +31,9 @@ class MainActivity : FlutterActivity() {
         // Each new test tone gets a new token; an older tone stops when it sees the token changed.
         @Volatile
         private var toneToken = 0
+
+        // Only one benchmark at a time: two at once would measure each other.
+        private val benchBusy = AtomicBoolean(false)
     }
 
     private var pendingNotif: MethodChannel.Result? = null
@@ -116,6 +121,20 @@ class MainActivity : FlutterActivity() {
                             )
                             result.success(null)
                         }
+                        // --- native C++ core
+                        "coreInfo" -> result.success(
+                            mapOf(
+                                "raw" to NativeCore.info(),
+                                "abis" to Build.SUPPORTED_ABIS.toList(),
+                            )
+                        )
+                        "coreBench" -> runBench(
+                            call.argument<Int>("kernel") ?: 0,
+                            call.argument<Int>("taps") ?: 0,
+                            call.argument<Int>("block") ?: 0,
+                            call.argument<Int>("rtMs") ?: 0,
+                            result
+                        )
                         // --- shared
                         "setEnabled" -> result.success(EngineHub.setEqEnabled(call.argument<Boolean>("on") ?: false))
                         "stop" -> {
@@ -183,6 +202,35 @@ class MainActivity : FlutterActivity() {
     }
 
     // ---------------------------------------------------------------- service, permissions, battery
+
+    /**
+     * Runs one native benchmark case off the UI thread, at audio priority (what a real audio thread would get).
+     * Answers with the raw "key=value;..." text; Dart parses it.
+     */
+    private fun runBench(kernel: Int, taps: Int, block: Int, rtMs: Int, result: MethodChannel.Result) {
+        if (!benchBusy.compareAndSet(false, true)) {
+            result.success(NativeCore.fail("another benchmark is already running"))
+            return
+        }
+        Thread {
+            var raw: String
+            try {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+                raw = NativeCore.bench(kernel, taps, block, rtMs)
+            } catch (t: Throwable) {
+                raw = NativeCore.fail("${t.javaClass.simpleName}: ${t.message}")
+            } finally {
+                benchBusy.set(false)
+            }
+            runOnUiThread {
+                try {
+                    result.success(raw)
+                } catch (ignored: Exception) {
+                    // the screen went away while we measured: nobody is waiting for the answer
+                }
+            }
+        }.start()
+    }
 
     private fun startEngineService(title: String, text: String, stop: String, bypass: String) {
         EngineHub.setWanted(true)

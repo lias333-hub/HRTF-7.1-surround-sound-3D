@@ -19,11 +19,15 @@ jobs:
           flutter-version: '3.22.0'
           cache: true
       - run: bash ci/prepare_android.sh
+      - name: C++ core tests (host)
+        run: bash ci/cpp_tests.sh
       - run: flutter analyze
       - run: flutter test
       - name: Kotlin unit tests
         run: cd android && ./gradlew :app:testDebugUnitTest --console=plain
       - run: flutter build apk --release
+      - name: Verify the C++ core is in the APK for 32-bit and 64-bit ARM
+        run: bash ci/check_native_libs.sh build/app/outputs/flutter-apk/app-release.apk
       - name: Verify fixed test signing key
         run: bash ci/check_signing.sh build/app/outputs/flutter-apk/app-release.apk
       - uses: actions/upload-artifact@v4

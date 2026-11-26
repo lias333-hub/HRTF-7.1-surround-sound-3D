@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'core_bench_card.dart';
 import 'device_info_screen.dart';
 import 'engine.dart';
 import 'engine_screen.dart';
@@ -162,6 +163,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
               ),
             ),
           ),
+          const CoreBenchCard(),
         ],
       ),
     );
