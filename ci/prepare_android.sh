@@ -42,6 +42,14 @@ if ! grep -q "src/main/cpp/CMakeLists.txt" android/app/build.gradle; then
 
 // Directional Audio: build the C++ core (libdacore.so) with the Android NDK.
 android {
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                // No 32-bit x86: Flutter has no engine for it, so the core would be dead weight there.
+                abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
+            }
+        }
+    }
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
