@@ -7,7 +7,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Release speed without -ffast-math: sound quality first (fast-math changes results).
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-# The Android debug build type would use -O0, which makes the DSP and any benchmark meaningless: always optimise.
+# Android Gradle builds "release" as RelWithDebInfo (not Release) and "debug" as Debug (-O0, which would make the DSP and
+# any benchmark meaningless): the core is always optimised, whatever the build type.
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -g -DNDEBUG")
+set(CMAKE_CXX_FLAGS_MINSIZEREL "-O3 -DNDEBUG")
 if(ANDROID)
   set(CMAKE_CXX_FLAGS_DEBUG "-O3 -g")
 endif()

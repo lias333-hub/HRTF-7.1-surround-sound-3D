@@ -37,8 +37,16 @@ fi
 rm -rf android/app/src/main/cpp
 mkdir -p android/app/src/main/cpp
 cp -r native/cpp/. android/app/src/main/cpp/
-if ! grep -q "src/main/cpp/CMakeLists.txt" android/app/build.gradle; then
-  cat >> android/app/build.gradle <<'GRADLE'
+# The gradle block is removed and appended again every time, so a changed block also reaches boxes that already
+# have an android/ folder from an earlier run (a plain "already there" check would keep the old one forever).
+python3 - <<'PY'
+import re
+p = "android/app/build.gradle"
+s = open(p).read()
+s = re.sub(r"\n// Directional Audio: build the C\+\+ core.*?\n}\n", "\n", s, flags=re.S)
+open(p, "w").write(s)
+PY
+cat >> android/app/build.gradle <<'GRADLE'
 
 // Directional Audio: build the C++ core (libdacore.so) with the Android NDK.
 android {
@@ -57,6 +65,5 @@ android {
     }
 }
 GRADLE
-fi
 
 flutter pub get
