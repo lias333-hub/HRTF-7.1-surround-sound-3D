@@ -2,7 +2,7 @@
 
 > **ما هذا الملف:** الوصف الثابت نسبياً للمشروع: ما هو، كيف هو مبني، كيف نبني ونختبر، وما الذي اتفقنا عليه. يتغير فقط عندما تتغير البنية أو القرارات أو طريقة العمل.
 > **الملفات الشقيقة:** `CHECKPOINT.md` (أين وصلنا الآن وماذا بعد) · `NOTEBOOK.md` (الدفتر الزمني الكامل) · `IDEAS_REGISTRY.md` (سجل الأفكار وحكمنا على كل فكرة) · `EXPERIMENTS.md` (سجل التجارب: فرضية → قراءة من السجل → قرار).
-> **آخر تحديث:** 2026-11-25 · **الإصدار:** v0.4.1 (build 6) · **HEAD (كود) وقت الكتابة:** `175399e` (قد يتقدم بـcommits توثيق فقط)
+> **آخر تحديث:** 2026-11-26 · **الإصدار:** v0.5.0 (build 7) · **HEAD (كود) وقت الكتابة:** `214e7ce` (قد يتقدم بـcommits توثيق فقط)
 > **قاعدة التحديث:** يُحدَّث هذا الملف عند أي تغيير في البنية أو القرارات أو الأدوات، ويُذكر التغيير في سطر بقسم «سجل تغييرات المانيفست» أسفله.
 
 ---
@@ -12,7 +12,7 @@
 - **الاسم:** Directional Audio.
 - **الهدف (بكلمات صاحب المشروع):** تطبيق يجعل **أي سماعة Stereo** تعطي صوتاً محيطياً دقيقاً وقريباً من Surround 7.1، بإضافة **HRTF**.
 - **المنصة:** أندرويد. واجهة Flutter (Dart) + طبقة أصلية Kotlin، ونواة DSP بـ C++ لاحقاً.
-- **المستودع:** `https://github.com/lias333-hub/hrtf-7.1-surround-sound-3d` (عام Public). الفرع الرئيسي `main`. الإصدار الحالي v0.4.1 (آخر commit للكود `175399e`).
+- **المستودع:** `https://github.com/lias333-hub/hrtf-7.1-surround-sound-3d` (عام Public). الفرع الرئيسي `main`. الإصدار الحالي v0.5.0 (آخر commit للكود `214e7ce`).
 - **اسم الحزمة:** `com.directionalaudio.directional_audio` · اسم مشروع Flutter: `directional_audio`.
 - **لغة المستخدم:** العربية (لهجة لبنانية). يريد ردوداً مختصرة وعملية، ونقاشاً عميقاً عندما يطلبه أو عندما تُطرح أفكار جديدة.
 - **المشروع في claude.ai:** Project باسم «Directional Audio». فيه مستند `claude/ideas-registry.md` ونسخ من هذه الملفات (بما فيها `claude/EXPERIMENTS.md`).
@@ -24,6 +24,7 @@
 3. **خمس لغات للواجهة:** العربية `ar`، الإنجليزية `en`، الفرنسية `fr`، الإسبانية `es`، التركية `tr` + خيار «لغة النظام».
 4. **الأساس أولاً:** EQ، الملفات (profiles)، استيراد/تصدير GraphicEQ، قبل الميزات المتقدمة.
 5. **من محادثته مع Gemini:** وضع داكن + ثيمات + Dynamic Color (أندرويد 12+)؛ إدارة حالة بأسلوب Provider مع تخزين محلي؛ واجهة بأسلوب Wavelet (مفتاح رئيسي، منحنى EQ، ملفات) مع تبويبات إضافية للمكاني/HRTF؛ شريط حالة حي للخدمة (مع زر استثناء البطارية)؛ بلاطة Quick Settings لاحقاً؛ «بنك أفكار» يشمل الأفكار الصعبة وتُفلتر لاحقاً مع Claude/ChatGPT/Gemini.
+7. **(2026-11-26) قرارات أُكدت دفعة واحدة:** أقل أندرويد **API 21**؛ ABI **armeabi-v7a + arm64-v8a** و**32-bit هو مرجع الأداء**؛ المكالمات والإشعارات خارج النطاق؛ Backend موحّد T1..T5 (النواة واحدة ومصدر الصوت يتغير)؛ HRTF عام أولاً؛ لا ادعاء Dolby؛ فحص ترخيص كل مجموعة HRTF/SOFA قبل تضمينها؛ **البدء بنواة C++ (T4) الآن بالتوازي مع تجارب الهاتف**.
 6. **Root ليس شرطاً.** يعرف Shizuku/ADB ويريد تجنب Root. (طبقة اختيارية لاحقاً — انظر مقترحات لم تُؤكد في `CHECKPOINT.md`.)
 
 ## 3. اتفاقيات العمل مع صاحب المشروع
@@ -54,7 +55,7 @@
 
 - **Flutter/Dart:** الواجهة، الحالة، التخزين (`shared_preferences`)، الترجمة، التقارير.
 - **Kotlin:** الجسر الأصلي (`MainActivity`)، مركز المحرك (`EngineHub`)، الخدمة (`EngineService`).
-- **C++ (لاحقاً):** نواة DSP عند الحاجة (HRTF/convolution/limiter). **Oboe** فقط عندما يناسب المسار. **Rust** مؤجل.
+- **C++ (منذ v0.5.0):** نواة DSP `libdacore.so` (`native/cpp`) — الآن biquad وFIR وأداة قياس؛ لاحقاً HRTF/convolution/limiter. تُبنى بـCMake عبر NDK لـ`armeabi-v7a` و`arm64-v8a` و`x86_64`. **Oboe** فقط عندما يناسب المسار. **Rust** مؤجل. قواعد النواة في §4.8.
 - تفاصيل أخرى عن الطبقات في `IDEAS_REGISTRY.md` (مصدرها ملف ChatGPT).
 
 ### 4.3 EngineHub (Kotlin) — قلب v0.3
@@ -82,9 +83,18 @@ Singleton يملك كل المؤثرات الحية (وليس الـActivity)، 
 - `startForeground` بنوع `mediaPlayback` على API 29+. النصوص (العنوان/النص/زر الإيقاف) تأتي من Dart وتُخزَّن في prefs ليعمل بعد إعادة التشغيل.
 - عند البدء: `stateListener` ثم `markService(true)` ثم `restoreIfEmpty()` ثم `watchRoutes()`. نص الإشعار يتبدل إلى نص Bypass (مُترجَم من Dart، مخزّن في prefs `n_bypass`) أثناء Bypass. زر الإيقاف يستدعي `setWanted(false)`. `START_STICKY`.
 
+### 4.8 النواة C++ (`native/cpp`، v0.5.0)
+
+- **قواعد صارمة (قرار 2026-11-26):** لا تخصيص ذاكرة ولا أقفال ولا تسجيل ولا ملفات داخل مسار الصوت؛ **لا `-ffast-math`**؛ الإشارة float والحسابات والتصميم والمراجع double؛ **كل نواة لها مرجع ومتجهات golden** من Python/scipy (`tools/gen_golden.py` ← `test/golden.h`)؛ SIMD عبر vectors عامة لا inline asm (الاستثناء: ضبط flush-to-zero).
+- **البنية:** `include/da_core.h` (الواجهة)، `src/kernels.cpp` (`sosProcess` float، `sosProcessD` double-state — **هو المعتمد للمعادل (F-01)**، `sosProcessRef`، `firRef`، `firSimd`)، `src/bench.cpp`، `src/da_core.cpp` (معلومات، `enableFlushToZero`)، `jni/da_jni.cpp` (`RegisterNatives` للصنف `com/directionalaudio/directional_audio/NativeCore`: `nativeInfo`، `nativeBench`)، `CMakeLists.txt` (على Android مكتبة مشتركة `dacore`؛ على المضيف مكتبة ساكنة + `da_tests`؛ دائماً `-O3` لأن AGP يبني release كـRelWithDebInfo — F-03).
+- **32-bit:** NEON شرط أساسي (NDK يبنيه افتراضياً — F-02). `FPSCR` bit 24 لـFTZ.
+- **الاختبارات:** `bash ci/cpp_tests.sh` (g++ وclang++ Release + sanitizers حيث تتوفر) = 53 فحصاً، تعمل في `build.yml` وعلى الصندوق.
+- **الجسر:** `NativeCore.kt` (لا يرمي: الأخطاء ترجع `ok=0;error=…`) والصيغة `k=v;k=v` تُحلَّل في Dart (`parseKv`).
+- **الأداء:** `coreBench` يعمل على خيط خلفي بأولوية `URGENT_AUDIO`، وقياس واحد في الوقت. القرار الهندسي (FIR مباشر أم FFT) ينتظر E-09.
+
 ### 4.5 الجسر Flutter ↔ Kotlin
 
-- **MethodChannel `directional/eq`:** `start, setLevels(+profile), dpProbe, dpStart, dpGains(+profile), setEnabled, stop, deviceInfo, fxStart, fxSet, fxStop, svcStart(+bypass), svcStop, status, notifStatus, notifRequest, batteryIgnored, batteryRequest, tone, toneStop` و**(v0.4)** `outAssign, outUnassign, outSync, lockSet, retry` و**(v0.4.1)** `logGet` (يعيد `{header, text}`)، `logClear`، `logAdd(tag,msg)`، و`retry` يقبل `reason` (`manual` / `app resume` / `output changed` / `restored after process restart`).
+- **MethodChannel `directional/eq`:** `start, setLevels(+profile), dpProbe, dpStart, dpGains(+profile), setEnabled, stop, deviceInfo, fxStart, fxSet, fxStop, svcStart(+bypass), svcStop, status, notifStatus, notifRequest, batteryIgnored, batteryRequest, tone, toneStop` و**(v0.4)** `outAssign, outUnassign, outSync, lockSet, retry` و**(v0.4.1)** `logGet` (يعيد `{header, text}`)، `logClear`، `logAdd(tag,msg)`، و**(v0.5.0)** `coreInfo` (يعيد `{raw, abis}`) و`coreBench(kernel,taps,block,rtMs)` (يعيد نصاً `k=v;…`)، و`retry` يقبل `reason` (`manual` / `app resume` / `output changed` / `restored after process restart`).
 - **EventChannel `directional/status`:** يبث حالة المحرك من `EngineHub.emit()` إلى `EngineApi.stream()`. حقول الحالة (v0.4): `profile, switchSeq, locked, bypass, output{key,type,name}, assignments[]` إضافة للحقول السابقة؛ و`outSync` يضيف `switched`.
 - **سجل الأحداث (v0.4.1):** وسوم: `proc` (بدء العملية/استعادة)، `svc`، `device` (إضافة/إزالة جهاز صوت)، `route` (المخرج الأساسي + القرار + قائمة المخارج)، `switch`، `profile`، `slot`، `lock`، `eq`، `fx`، `rebuild`، `control`، `bypass`، `retry`، `app`، `log`. **لا يُكتب شيء من مسار الصوت** (أحداث نادرة فقط) فلا أثر على السرعة؛ كتابة الملف على خيط خلفي واحد.
 - **أخطاء:** الأخطاء تعود كـ `PlatformException('EQ_ERROR', …)`؛ فشل Dynamics الصريح يعود `DP_FAILED`.
@@ -122,24 +132,31 @@ lib/                      واجهة Flutter (≈3,000 سطر)
   settings_screen.dart / language_sheet.dart
   store.dart              تخزين SharedPreferences (user, working, selected, enabled, backend, lang, fx)
   strings.dart            L10n: جداول 5 لغات + fallback إنجليزي (≈ 900 سطر)
-  app_info.dart           kAppVersion = '0.4.1'
+  app_info.dart           kAppVersion = '0.5.0'
+  core_bench.dart         نماذج `CoreInfo`/`BenchResult`/`BenchCase`، `parseKv`، `CoreApi` (info/bench)، `kBenchSuite`
+  core_bench_card.dart    بطاقة «اختبار سرعة النواة» في تبويب الأدوات
   event_log_card.dart     بطاقة سجل الأحداث (عرض آخر 40 سطراً، نسخ الكل مع ترويسة الجهاز، تحديث، مسح)
 native/                   ملفات Kotlin والـManifest (تُنسخ إلى android/ عند البناء)
   EngineHub.kt · EngineService.kt · MainActivity.kt · AndroidManifest.xml
+  NativeCore.kt           جسر JNI (تحميل `dacore` مرة واحدة، لا يرمي استثناءً)
+  cpp/                    نواة C++ (انظر §4.8) تُنسخ إلى android/app/src/main/cpp عند البناء، وتُبنى بـCMake لـ3 معماريات
   EventLog.kt             سجل أحداث دائري (300 سطر) بملف files/events.log يبقى بعد قتل العملية؛ بلا Android (اختُبر JUnit)؛ الكتابة على خيط خلفي
   OutputRouting.kt        منطق نقي بلا Android: أولوية المخرج، المفتاح، متى يُبدَّل الملف، جدول إعادة المحاولة
-  test/OutputRoutingTest.kt (10) · test/EventLogTest.kt (7)   اختبارات JUnit (تُنسخ إلى android/app/src/test عند البناء)
-test/                     7 ملفات اختبار Dart، 63 اختباراً كلها تنجح
+  test/OutputRoutingTest.kt (10) · test/EventLogTest.kt (7) · test/NativeCoreTest.kt (2)   اختبارات JUnit (تُنسخ إلى android/app/src/test عند البناء)
+test/                     8 ملفات اختبار Dart، 78 اختباراً كلها تنجح
+tools/gen_golden.py       يولّد متجهات golden (scipy) إلى native/cpp/test/golden.h
 ci/
-  prepare_android.sh      يولّد android/ (غير مُلتزَم به) ويُسقط native/*.kt فوقه، وينسخ مفتاح التوقيع الثابت إلى ~/.android/debug.keystore
+  prepare_android.sh      يولّد android/ (غير مُلتزَم به) ويُسقط native/*.kt فوقه، وينسخ مفتاح التوقيع الثابت إلى ~/.android/debug.keystore، وينسخ native/cpp ويضيف كتلة CMake إلى build.gradle (تُحذف وتُضاف من جديد كل مرة؛ ABIs محصورة بـ3)
   check_signing.sh        يفشل إن لم يكن الـAPK موقّعاً بالمفتاح التجريبي الثابت (يُشغَّل في build.yml)
+  check_native_libs.sh    يفشل إن غاب `libdacore.so` لـarmeabi-v7a أو arm64-v8a من الـAPK
+  cpp_tests.sh            يبني ويشغّل اختبارات C++ على المضيف (gcc/clang، Release + sanitizers)
   test-signing/debug.keystore   مفتاح تجريبي **علني** (alias androiddebugkey، كلمة السر android) — للتجارب فقط، لا للنشر
   devshell/               صندوق البناء التفاعلي (client.sh, loop.sh, bin/emu, bin/dsync …)
 .github/workflows/
   build.yml               CI على push إلى main: analyze + test + build APK
   dev-shell.yml           الصندوق التفاعلي على فرع dev-shell
 docs/                     هذه الملفات (MANIFEST، CHECKPOINT، NOTEBOOK، IDEAS_REGISTRY، EXPERIMENTS)
-pubspec.yaml              الاسم directional_audio، 0.4.1+6، تبعية وحيدة: shared_preferences ^2.2.3
+pubspec.yaml              الاسم directional_audio، 0.5.0+7، تبعية وحيدة: shared_preferences ^2.2.3
 ```
 
 > مجلد `android/` **غير موجود في المستودع**؛ يُولَّد في كل بناء بـ `ci/prepare_android.sh`.
@@ -165,10 +182,12 @@ ci/devshell/client.sh status | stop
 - الأداة `emu` على الصندوق: `emu start 34` (محاكي أندرويد 14)، `install`, `launch`, `shot NAME`, `ui`, `tap X Y`, `tapt 'text'`, `key BACK`, `sh`, `crash`, `logclear`. أخطاء Kotlin تُقرأ من `/tmp/kotlin-daemon*.log`.
 - **لتحديث الصندوق بآخر ما دُفع:** `git fetch -q origin main && git reset -q --hard origin/main` (`git pull` يفشل: «divergent branches»). JDK 17: `export JAVA_HOME=$JAVA_HOME_17_X64`.
 - `emu`: `emu tapt 'System'` قد يضغط عنصراً خاطئاً (يطابق الوصف الكامل)؛ استعمل إحداثيات المنتقي. العناصر خارج الشاشة لا تظهر في `emu ui` فيلزم التمرير بـ`emu sh 'input swipe ...'`.
-- Flutter **3.22.0** / Dart **3.4**. الزمن: بناء ≈ 20–135 ث. يلزم **JDK 17** لـGradle 7.x (الافتراضي على الصندوق JDK 25 ويفشل).
+- Flutter **3.22.0** / Dart **3.4**. الزمن: بناء ≈ 20–135 ث (أول بناء بالنواة ≈ 3.5 د لتنزيل NDK 23.1 وCMake 3.18.1). يلزم **JDK 17** لـGradle 7.x (الافتراضي على الصندوق JDK 25 ويفشل).
+- بعد تغيير في إعداد NDK/CMake/ABIs على صندوق فيه بناء سابق: `rm -rf build android/app/build android/app/.cxx` قبل البناء، وإلا بقيت مخرجات قديمة في الـAPK (مثلاً مكتبة x86).
+- فحص التفكيك: استعمل مكتبة **غير مجرّدة** من `android/app/.cxx/**/obj/<abi>/libdacore.so` مع `llvm-objdump` من NDK؛ المكتبة داخل الـAPK مجرّدة وتعطي تفكيكاً مشوّهاً.
 
 ### 6.3 CI (`build.yml`)
-يعمل على push إلى `main` (إلا إن احتوت الرسالة `[skip ci]`): JDK 17 + Flutter 3.22.0 → `prepare_android.sh` → `flutter analyze` → `flutter test` → **اختبارات Kotlin** (`cd android && ./gradlew :app:testDebugUnitTest`) → `flutter build apk --release` → **`ci/check_signing.sh`** (التحقق من بصمة المفتاح الثابت) → رفع الـAPK كـartifact. **حالياً كل الـcommits تحمل `[skip ci]`** والبناء يجري على dev-shell.
+يعمل على push إلى `main` (إلا إن احتوت الرسالة `[skip ci]`): JDK 17 + Flutter 3.22.0 → `prepare_android.sh` → **اختبارات C++ على المضيف** → `flutter analyze` → `flutter test` → **اختبارات Kotlin** (`cd android && ./gradlew :app:testDebugUnitTest`) → `flutter build apk --release` → **`ci/check_native_libs.sh`** (المكتبة لـv7a وarm64) → **`ci/check_signing.sh`** (التحقق من بصمة المفتاح الثابت) → رفع الـAPK كـartifact. **حالياً كل الـcommits تحمل `[skip ci]`** والبناء يجري على dev-shell.
 
 ### 6.4 اصطلاح الـcommit
 - نهاية الرسالة: `[skip ci]`.
@@ -224,3 +243,4 @@ ci/devshell/client.sh status | stop
 - 2026-11-21: إنشاء الملف (v0.3.0).
 - 2026-11-24: تحديث لـv0.4.0 (OutputRouting، جدول المخرجات، Bypass، قنوات جديدة، اختبارات Kotlin في CI، ملاحظات الصندوق).
 - 2026-11-25: تحديث لـv0.4.1 (التوقيع الثابت، EventLog، قنوات `logGet/logClear/logAdd` و`retry(reason)`، `EXPERIMENTS.md`).
+- 2026-11-26: تحديث لـv0.5.0 (النواة C++ §4.8، `NativeCore.kt`، `coreInfo/coreBench`، بطاقة القياس، خطوات CI الجديدة، قرارات 2026-11-26 مؤكدة، ملاحظات الصندوق F-02…F-04).
