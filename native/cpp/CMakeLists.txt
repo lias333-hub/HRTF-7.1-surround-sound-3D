@@ -21,7 +21,9 @@ add_compile_options(-Wall -Wextra -Wno-psabi)
 
 set(DA_SOURCES src/da_core.cpp src/kernels.cpp src/bench.cpp)
 
-# 32-bit ARM: only the kernels file may use NEON instructions. It is called only after a run-time NEON check.
+# 32-bit ARM: NEON is explicit for the kernels file. NOTE (finding F-02, disassembly of the built library): NDK r23's
+# clang already targets NEON by default for armeabi-v7a, so NEON instructions also appear in other files and in libc++
+# code. NEON is therefore a baseline requirement of this library on 32-bit ARM, not something we can fence in.
 if(ANDROID AND ANDROID_ABI STREQUAL "armeabi-v7a")
   set_source_files_properties(src/kernels.cpp PROPERTIES COMPILE_FLAGS "-mfpu=neon")
 endif()

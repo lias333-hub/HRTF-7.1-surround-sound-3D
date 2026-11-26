@@ -23,7 +23,8 @@ bool simdCompiledWithNeon();  // true when this build targets ARM and was built 
 // True when this library was compiled with optimisation on. A benchmark of a non-optimised build (-O0) is
 // meaningless, so the app shows a warning when this is false.
 bool optimizedBuild();
-// True when the SIMD kernels may run on THIS cpu. On 32-bit ARM it checks the NEON bit at run time; 64-bit ARM
+// What this CPU says about SIMD. On 32-bit ARM it reads the NEON bit at run time (informational: the NDK builds the
+// whole library with NEON, finding F-02, so a CPU without it is not supported); 64-bit ARM
 // always has it; on x86 the generic vector code is always fine.
 bool cpuSimdOk();
 // Flush denormal numbers to zero on the calling thread. Without it IIR filters can become several times slower

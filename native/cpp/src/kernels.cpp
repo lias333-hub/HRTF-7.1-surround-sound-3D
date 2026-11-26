@@ -1,5 +1,6 @@
-// The signal-processing kernels. On 32-bit ARM this file alone is compiled with -mfpu=neon (see CMakeLists.txt) and
-// is only called after cpuSimdOk() said yes, so a phone without NEON can never hit an illegal instruction.
+// The signal-processing kernels. On 32-bit ARM this file is compiled with -mfpu=neon (see CMakeLists.txt). The NDK
+// toolchain targets NEON by default for armeabi-v7a anyway (finding F-02), so NEON is a baseline requirement there;
+// cpuSimdOk() stays as an honest report of what the CPU says.
 #include <cstring>
 
 #include "da_core.h"
