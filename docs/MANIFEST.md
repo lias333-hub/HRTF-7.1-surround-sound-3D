@@ -1,8 +1,8 @@
 # Directional Audio — MANIFEST (الهوية الثابتة للمشروع)
 
 > **ما هذا الملف:** الوصف الثابت نسبياً للمشروع: ما هو، كيف هو مبني، كيف نبني ونختبر، وما الذي اتفقنا عليه. يتغير فقط عندما تتغير البنية أو القرارات أو طريقة العمل.
-> **الملفات الشقيقة:** `CHECKPOINT.md` (أين وصلنا الآن وماذا بعد) · `NOTEBOOK.md` (الدفتر الزمني الكامل) · `IDEAS_REGISTRY.md` (سجل الأفكار وحكمنا على كل فكرة) · `EXPERIMENTS.md` (سجل التجارب: فرضية → قراءة من السجل → قرار).
-> **آخر تحديث:** 2026-11-26 · **الإصدار:** v0.5.0 (build 7) · **HEAD (كود) وقت الكتابة:** `214e7ce` (قد يتقدم بـcommits توثيق فقط)
+> **الملفات الشقيقة:** `CHECKPOINT.md` (أين وصلنا الآن وماذا بعد) · `NOTEBOOK.md` (الدفتر الزمني الكامل) · `IDEAS_REGISTRY.md` (سجل الأفكار وحكمنا على كل فكرة) · `AUDIT.md` (سجل التدقيق: كل ملاحظة بدليلها وحالتها) · `EXPERIMENTS.md` (سجل التجارب: فرضية → قراءة من السجل → قرار).
+> **آخر تحديث:** 2026-11-27 · **الإصدار:** v0.5.0 (build 7) · **HEAD (كود) وقت الكتابة:** `214e7ce` (قد يتقدم بـcommits توثيق فقط)
 > **قاعدة التحديث:** يُحدَّث هذا الملف عند أي تغيير في البنية أو القرارات أو الأدوات، ويُذكر التغيير في سطر بقسم «سجل تغييرات المانيفست» أسفله.
 
 ---
@@ -15,7 +15,7 @@
 - **المستودع:** `https://github.com/lias333-hub/hrtf-7.1-surround-sound-3d` (عام Public). الفرع الرئيسي `main`. الإصدار الحالي v0.5.0 (آخر commit للكود `214e7ce`).
 - **اسم الحزمة:** `com.directionalaudio.directional_audio` · اسم مشروع Flutter: `directional_audio`.
 - **لغة المستخدم:** العربية (لهجة لبنانية). يريد ردوداً مختصرة وعملية، ونقاشاً عميقاً عندما يطلبه أو عندما تُطرح أفكار جديدة.
-- **المشروع في claude.ai:** Project باسم «Directional Audio». فيه مستند `claude/ideas-registry.md` ونسخ من هذه الملفات (بما فيها `claude/EXPERIMENTS.md`).
+- **المشروع في claude.ai:** Project باسم «Directional Audio». فيه مستند `claude/ideas-registry.md` ونسخ من هذه الملفات (بما فيها `claude/EXPERIMENTS.md` و`claude/AUDIT.md`).
 
 ## 2. قرارات ثابتة (أكدها صاحب المشروع)
 
@@ -155,7 +155,7 @@ ci/
 .github/workflows/
   build.yml               CI على push إلى main: analyze + test + build APK
   dev-shell.yml           الصندوق التفاعلي على فرع dev-shell
-docs/                     هذه الملفات (MANIFEST، CHECKPOINT، NOTEBOOK، IDEAS_REGISTRY، EXPERIMENTS)
+docs/                     هذه الملفات (MANIFEST، CHECKPOINT، NOTEBOOK، IDEAS_REGISTRY، EXPERIMENTS، AUDIT)
 pubspec.yaml              الاسم directional_audio، 0.5.0+7، تبعية وحيدة: shared_preferences ^2.2.3
 ```
 
@@ -197,6 +197,7 @@ ci/devshell/client.sh status | stop
   Claude-Session: https://claude.ai/code/session_01WnhsQLhoQH9u8qQj3g3MMd
   ```
 - نص الـcommit بالإنجليزية.
+- **(منذ 2026-11-27، من AU-02)** وثائق الإصدار تُرفع **في commit الإصدار نفسه** (لا بعده)، وكل إصدار يُوسَم `vX.Y.Z` على commit الإصدار.
 
 ### 6.5 تسليم الـAPK للمستخدم
 يُبنى على dev-shell، يُنسخ إلى `$DS_ART`، يُنزَّل، ويُرسل عبر `SendUserFile`. اسم الملف: `directional-audio-vX.Y.Z.apk`.
@@ -244,3 +245,4 @@ ci/devshell/client.sh status | stop
 - 2026-11-24: تحديث لـv0.4.0 (OutputRouting، جدول المخرجات، Bypass، قنوات جديدة، اختبارات Kotlin في CI، ملاحظات الصندوق).
 - 2026-11-25: تحديث لـv0.4.1 (التوقيع الثابت، EventLog، قنوات `logGet/logClear/logAdd` و`retry(reason)`، `EXPERIMENTS.md`).
 - 2026-11-26: تحديث لـv0.5.0 (النواة C++ §4.8، `NativeCore.kt`، `coreInfo/coreBench`، بطاقة القياس، خطوات CI الجديدة، قرارات 2026-11-26 مؤكدة، ملاحظات الصندوق F-02…F-04).
+- 2026-11-27: ملف جديد `AUDIT.md` (سجل التدقيق) بعد فحص مراجعة ChatGPT لـv0.5.0 على الكود؛ قاعدة «وثائق الإصدار مع commit الإصدار + وسم الإصدار» (§6.4)؛ E-08 ثبت وE-10 جديدة في `EXPERIMENTS.md`.
