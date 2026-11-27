@@ -1,6 +1,6 @@
 # Directional Audio — سجل الأفكار والقرارات (مرجع مشترك)
 
-آخر تحديث: 2026-11-26 · الإصدار الحالي: v0.5.0 · المستودع: lias333-hub/HRTF-7.1-surround-sound-3D
+آخر تحديث: 2026-11-27 · الإصدار الحالي: v0.5.0 · المستودع: lias333-hub/HRTF-7.1-surround-sound-3D
 
 > نسخة المستودع من مستند الـProject `claude/ideas-registry.md`. عند أي تعديل يُحدَّث الاثنان معاً. ملفات شقيقة: `MANIFEST.md` · `CHECKPOINT.md` · `NOTEBOOK.md` · `EXPERIMENTS.md`.
 
@@ -37,7 +37,10 @@
 | ملفات AutoEq لتصحيح السماعة (غير معادل النشاط) | Gemini + ChatGPT | لا شيء | استيراد GraphicEQ موجود. تصفّح قاعدة بيانات AutoEq يحتاج فحص ترخيص. | ✅ جزئي v0.1 |
 | AI Genre-Based Auto EQ (تحليل الطيف) (مسقطة من سجل Gemini) | Gemini | PCM (T3/T4) | أفضل تنفيذ في المشغّل: تحليل المقطوعة قبل التشغيل بدل التبديل الحي المتذبذب. | ⏸ |
 | Quick Settings Tile (مسقطة من سجل Gemini) | Gemini | لا شيء | مناسب لاحقاً. | ⏸ v0.4+ |
-| واجهة بأسلوب Wavelet، ثيمات، Provider، Dynamic Color | Gemini، وقرار المستخدم | لا شيء | بعد إثبات الصوت. | ⏸ |
+| واجهة بأسلوب Wavelet، ثيمات، Provider، Dynamic Color | Gemini، وقرار المستخدم | لا شيء | **(2026-11-27) المستخدم أكّد الاتجاه: واجهة متطورة قريبة من Wavelet + الميزات الأخرى، والتركيز الأكبر على منحنى المعادل.** ملف Gemini يحدد: 3 تبويبات (Equalizer / Spatial & HRTF / Profiles & Presets)، شريط حالة حي، Visualizer، Quick Tile، وضع Simple/Advanced. الترتيب بانتظار قراره. | ⏭ (بانتظار الترتيب) |
+| **محرر منحنى EQ دقيق:** نقاط قابلة للسحب على منحنى، إدخال رقمي (Hz/dB/Q)، تكبير المحور، وضع دقة للسحب، تراجع/إعادة، مقارنة A/B، **عرض المنحنى الفعلي المطبَّق بجانب المطلوب** | المستخدم (2026-11-27) + Claude (تصميم) | عقد `EngineParams` (نموذج النطاقات) | على T1 المنحنى المرسوم لا يطابق ما يطبّقه العتاد (J7: 5 نطاقات؛ DP: نطاقات متجاورة) فيجب عرض «الفعلي»؛ يصير صادقاً تماماً في T4 (biquads نعرف استجابتها بدقة). يتبع `AUDIT` AU-14/17/18. التفاصيل في `docs/UI_SPEC.md` (قيد الإنشاء). | ⏭ |
+| استيراد ParametricEQ (AutoEq: `Filter n: ON PK Fc … Hz Gain … dB Q …`) بجانب GraphicEQ | Claude | نموذج parametric | الصيغة معيارية عند AutoEq؛ لا يُنفَّذ قبل حسم نموذج النطاقات. | ⏭ |
+| Spectrum Analyzer/Visualizer حي (Gemini) | Gemini | PCM (T4) | على T1 غير ممكن بصدق (لا وصول للصوت المعالَج)؛ يُبنى مع المشغّل. | ⏸ |
 | Live DSP Diagnostics Dashboard (مسقطة من سجل Gemini) | Gemini + ChatGPT (قياسات الأداء) | نواة DSP | يتبع نواة C++. | ⏸ |
 | Adaptive Bluetooth Codec & Latency Optimizer (مسقطة من سجل Gemini) | Gemini | غير واضح | حسب علمي لا يستطيع تطبيق عادي تغيير الكوديك. القراءة والعرض فقط ممكنان. يحتاج تحققاً. | ⏸ |
 | حارس السمع (Safe Listening Guardian) | Gemini + ChatGPT | تتبع المدة والمستوى | يُقدَّم كتذكير وخفض تدريجي، وليس قياساً لـ SPL، لأن حساسية السماعات تختلف. | ⏸ |
