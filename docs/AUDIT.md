@@ -97,7 +97,7 @@ Kotlin: `lastError` يُمسح في `startSystem/startDynamics/rebuild` فقط،
 `stopEq()` (460) و`fxStop()` (579) لا يصفّران `createFailed/controlLost`/`retryAttempt` ولا يُلغيان `retryRunnable`؛ و`fxStart()` لا يصفّرها. السيناريو: EQ فقد السيطرة → إيقاف EQ → تشغيل FX فقط → يعرض Bypass «control_lost» لمحرك لم يعد موجوداً. (بدون سيناريو كهذا `bypassReason` يعيد null لأن `wantsProcessing=false`، فالعرض مخفي لا مصحَّح.)
 
 ### AU-17 [C] DynamicsProcessing ليس 10 مرشحات Peaking مستقلة — ✅ (معروف، متأصل) S3
-`cutoffs()` (386): كل نطاق يمتد حتى الوسط الهندسي بين المراكز؛ هذا شكل الـAPI نفسه لا خطأ تنفيذ. الحل الحقيقي = biquads خاصتنا في T4. **إضافة [M]:** تعليق الكود يسمّي الـLimiter «gentle» بينما إعداده `attack 1 ms / ratio 10 / threshold −1 dB` — ليس لطيفاً ولا مُختبراً بالأذن؛ يدخل ضمن E-01.
+`cutoffs()` (386): كل نطاق يمتد حتى الوسط الهندسي بين المراكز؛ هذا شكل الـAPI نفسه لا خطأ تنفيذ. الحل الحقيقي = biquads خاصتنا في T4. **تأكيد من التوثيق الرسمي (2026-11-27):** «Equalizer bands have three controllable parameters: enabled/disabled, cutoffFrequency and gain» — لا Q ولا نوع فلتر؛ عدد النطاقات قابل للضبط لكن أقصاه غير موثَّق (⇒ E-11). **إضافة [M]:** تعليق الكود يسمّي الـLimiter «gentle» بينما إعداده `attack 1 ms / ratio 10 / threshold −1 dB` — ليس لطيفاً ولا مُختبراً بالأذن؛ يدخل ضمن E-01.
 
 ### AU-18 [C] المعادل النظامي بلا Headroom/Auto-preamp — ✅ S2 🗓 (مرتبط بجودة الصوت)
 `eq_model.dart` `deviceLevels`: الـpreamp **يدوي** ويُضاف على كل نطاق ثم يُقصّ لمدى العتاد (قصّ صامت يغيّر شكل المنحنى). ولا Limiter على المسار النظامي. القالب `builtin:bass` (+6 dB) بـpreamp=0 يرفع الذروة ⇒ clipping على التسجيلات العالية.
