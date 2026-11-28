@@ -73,6 +73,18 @@ class Store {
     await p.setString('backend', v);
   }
 
+  /// Auto headroom (the preamp sent to the engine is lowered so the boosted curve cannot clip). On unless the user
+  /// switched it off.
+  static Future<bool> loadAutoPreamp() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getBool('autoPreamp') ?? true;
+  }
+
+  static Future<void> saveAutoPreamp(bool v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('autoPreamp', v);
+  }
+
   /// 'system' or a language code. Old versions stored 'ar' or 'en', which stay valid.
   static Future<String> loadLang() async {
     final p = await SharedPreferences.getInstance();

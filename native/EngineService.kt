@@ -66,7 +66,10 @@ class EngineService : Service() {
                 startForeground(NOTIF_ID, n)
             }
         } catch (e: Exception) {
-            // For example Android 12+ refusing a foreground start from the background.
+            // For example Android 12+ refusing a foreground start from the background. Say so (log), and stop
+            // "wanting" the service: otherwise the saved flag claims a service that does not exist.
+            EngineHub.logAdd("svc", "startForeground FAILED: ${e.message ?: e.javaClass.simpleName}")
+            EngineHub.setWanted(false)
             stopSelf()
             return START_NOT_STICKY
         }

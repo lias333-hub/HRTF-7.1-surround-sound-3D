@@ -65,7 +65,10 @@ class OutputEntry {
   String toString() => name.isEmpty ? typeName : '$typeName ($name)';
 }
 
-enum CapState { yes, consent, no, needs, planned }
+/// [consent]: works once the user agrees (the app already has it). [consentPlanned]: the phone would allow it with
+/// the user's consent, but the app has not built it yet (AU-24: a capability of the system must not read like a
+/// feature of the app).
+enum CapState { yes, consent, consentPlanned, no, needs, planned }
 
 class Capability {
   const Capability(this.key, this.state, [this.version]);
@@ -172,7 +175,7 @@ class DeviceReport {
             ? const Capability('dyn', CapState.needs, 9)
             : Capability('dyn', dynOk == false ? CapState.no : CapState.yes),
         sdk >= 29
-            ? const Capability('capture', CapState.consent)
+            ? const Capability('capture', CapState.consentPlanned)
             : const Capability('capture', CapState.needs, 10),
         const Capability('player', CapState.planned),
       ];
@@ -211,6 +214,7 @@ class DeviceReport {
       final s = switch (c.state) {
         CapState.yes => 'available',
         CapState.consent => 'possible with user consent',
+        CapState.consentPlanned => 'possible with user consent (not built into the app yet)',
         CapState.no => 'not available',
         CapState.needs => 'needs Android ${c.version}+',
         CapState.planned => 'planned',

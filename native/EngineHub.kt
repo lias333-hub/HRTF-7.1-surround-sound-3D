@@ -32,6 +32,14 @@ import java.util.concurrent.Executors
  */
 object EngineHub {
     private const val PREFS = "engine_state"
+    private val FX_NAMES = listOf("bass", "virt", "loud")
+
+    /** The system's effect type UUIDs (what AudioEffect.queryEffects lists) for each of [FX_NAMES]. */
+    private val FX_TYPES = mapOf(
+        "bass" to "0634f220-ddd4-11db-a0fc-0002a5d5c51b",
+        "virt" to "37cc2c00-dddd-11db-8577-0002a5d5c51b",
+        "loud" to "fe3199be-aed0-413f-87bb-11260eb63cf1"
+    )
 
     private var appCtx: Context? = null
     private val main = Handler(Looper.getMainLooper())
@@ -89,9 +97,10 @@ object EngineHub {
     private var lastKey: String? = null // main output the last time we looked
     private var switchSeq = 0 // grows each time a profile was switched automatically (not saved)
 
-    // bypass: the user wants processing but the sound is passing through untouched
-    private var createFailed = false
-    private var controlLost = false
+    // bypass: the user wants processing but the sound is passing through untouched. What we know about each effect
+    // (created / applied / controlled) lives in [health]; the bypass reason is derived from it, for the effects
+    // the user actually wants, so one effect's trouble can neither hide nor fake another's.
+    private val health = EffectHealth()
     private var retryAttempt = 0
 
     /** Set by the service so the notification can show the bypass state. Called on the main thread. */
@@ -182,11 +191,32 @@ object EngineHub {
         return out
     }
 
+    /** The effects the user wants processing from right now: "eq" and/or "bass", "virt", "loud". */
+    private fun wantedEffects(): List<String> {
+        val w = ArrayList<String>()
+        if (eqKind != "none" && eqEnabled) w.add("eq")
+        if (fxActive) for (k in FX_NAMES) if (fxOn[k] == true) w.add(k)
+        return w
+    }
+
     /** Why the sound is not being processed although the user wants it ("create_failed" / "control_lost"), or null. */
-    private fun bypassReason(): String? {
-        val wantsProcessing = (eqKind != "none" && eqEnabled) || (fxActive && fxOn.values.any { it })
-        if (!wantsProcessing) return null
-        return if (createFailed) "create_failed" else if (controlLost) "control_lost" else null
+    private fun bypassReason(): String? = health.reason(wantedEffects())
+
+    /** A successful operation: an old error message no longer describes the present (unless a bypass is still on). */
+    private fun noteOk() {
+        if (bypassReason() == null) lastError = null
+    }
+
+    /**
+     * After the user switched something on/off or an effect came or went: start the return rule when the sound
+     * should be processed but is not (and nothing is being retried yet), stop it when everything is fine.
+     */
+    private fun reviewBypass() {
+        if (bypassReason() == null) {
+            if (retryAttempt != 0) cancelRetry()
+        } else if (retryAttempt == 0) {
+            scheduleRetry()
+        }
     }
 
     fun bypass(): String? = bypassReason()
@@ -223,7 +253,7 @@ object EngineHub {
         val m = status()
         val b = m["bypass"] as String?
         if (b != loggedBypass) {
-            logAdd("bypass", "${loggedBypass ?: "none"} -> ${b ?: "none"}")
+            logAdd("bypass", "${loggedBypass ?: "none"} -> ${b ?: "none"} (${health.describe()})")
             loggedBypass = b
         }
         main.post {
@@ -273,6 +303,7 @@ object EngineHub {
         releaseEq()
         releaseDp()
         eqKind = "none"
+        health.clear("eq")
         val e = try {
             Equalizer(0, session)
         } catch (t: Throwable) {
@@ -281,14 +312,15 @@ object EngineHub {
         }
         e.enabled = false
         eq = e
-        watchControl(e)
+        health.created("eq", true)
+        watchControl(e, "eq")
         eqKind = "system"
         eqEnabled = false
         sysSession = session
         eqBands = e.numberOfBands.toInt()
         lastError = null
-        createFailed = false
         logAdd("eq", "system started session=$session bands=$eqBands")
+        reviewBypass()
         persist()
         watchRoutes()
         emit()
@@ -297,15 +329,34 @@ object EngineHub {
 
     /** [profileName]: which saved profile these levels come from, so the hub knows what is applied. */
     fun setSysLevels(levels: List<Int>, profileName: String? = null) {
+        val errBefore = lastError
+        val profBefore = profile
         sysLevels = levels
         noteProfile(profileName)
         try {
             applySysLevels()
+            noteOk()
         } catch (e: Exception) {
             lastError = e.message ?: e.javaClass.simpleName
         }
-        persist()
-        emit()
+        afterSliderApply(errBefore, profBefore)
+    }
+
+    /**
+     * A slider tick (AU-26): saving the whole state and building the status (it asks AudioManager for the devices) on
+     * every tick is wasteful, so the save is merged into one a moment later, and the status is only pushed when
+     * something visible changed (the error text or the applied profile).
+     */
+    private fun afterSliderApply(errBefore: String?, profBefore: String) {
+        persistSoon()
+        if (lastError != errBefore || profile != profBefore) emit()
+    }
+
+    private val persistRunnable = Runnable { persist() }
+
+    private fun persistSoon() {
+        main.removeCallbacks(persistRunnable)
+        main.postDelayed(persistRunnable, 300)
     }
 
     /** The user (Dart) says which profile is now applied; log only real changes, not every slider move. */
@@ -332,19 +383,21 @@ object EngineHub {
         releaseEq()
         releaseDp()
         eqKind = "none"
+        health.clear("eq")
         if (Build.VERSION.SDK_INT < 28) return mapOf("ok" to false, "error" to "needs Android 9+")
         if (centers.isEmpty()) return mapOf("ok" to false, "error" to "no bands")
         return try {
             val d = createDp(centers)
             dp = d
-            watchControl(d)
+            health.created("eq", true)
+            watchControl(d, "eq")
             dpCenters = centers
             eqKind = "dynamics"
             eqEnabled = false
             eqBands = centers.size
             lastError = null
-            createFailed = false
             logAdd("eq", "dynamics started bands=${centers.size}")
+            reviewBypass()
             persist()
             watchRoutes()
             emit()
@@ -370,16 +423,18 @@ object EngineHub {
     }
 
     fun setDpGains(gains: List<Double>, preamp: Double, profileName: String? = null) {
+        val errBefore = lastError
+        val profBefore = profile
         dpGains = gains
         dpPreamp = preamp
         noteProfile(profileName)
         try {
             if (Build.VERSION.SDK_INT >= 28) applyDp()
+            noteOk()
         } catch (t: Throwable) {
             lastError = t.message ?: t.javaClass.simpleName
         }
-        persist()
-        emit()
+        afterSliderApply(errBefore, profBefore)
     }
 
     // Band i covers everything up to its cutoff; cutoffs sit halfway (geometric mean) between centres.
@@ -433,6 +488,7 @@ object EngineHub {
     fun setEqEnabled(on: Boolean): Boolean {
         eqEnabled = on
         var effective = false
+        var failure: String? = null
         try {
             val e = eq
             if (e != null) {
@@ -441,10 +497,21 @@ object EngineHub {
             }
             effective = effective || setDpEnabled(on)
         } catch (t: Throwable) {
-            lastError = t.message ?: t.javaClass.simpleName
-            logAdd("eq", "enable=$on FAILED: $lastError")
+            failure = t.message ?: t.javaClass.simpleName
         }
-        logAdd("eq", "enabled=$on effective=$effective kind=$eqKind")
+        // Switching off always counts as done. Switching on that did not take (the effect is missing, dead or owned
+        // by another app) is a fact the UI must see: it goes into the error text and the bypass reason.
+        if (eqKind != "none") health.applied("eq", !on || effective)
+        if (failure != null) {
+            lastError = failure
+            logAdd("eq", "enable=$on FAILED: $failure")
+        } else if (on && !effective) {
+            lastError = "the equalizer did not turn on (the effect is missing or another app controls it)"
+        } else {
+            noteOk()
+        }
+        logAdd("eq", "enabled=$on effective=$effective kind=$eqKind health=${health.describe()}")
+        reviewBypass()
         persist()
         emit()
         return effective
@@ -464,6 +531,9 @@ object EngineHub {
         eqKind = "none"
         eqEnabled = false
         eqBands = 0
+        health.clear("eq")
+        noteOk()
+        reviewBypass()
         persist()
         maybeUnwatch()
         emit()
@@ -490,44 +560,95 @@ object EngineHub {
     private fun failure(e: Throwable): Map<String, Any> =
         mapOf("ok" to false, "error" to (e.message ?: e.javaClass.simpleName))
 
-    private fun fxCreate(): Map<String, Any> {
+    /**
+     * Creates the effects named in [want] that do not exist yet (an existing one is kept as it is) and reports on all
+     * three. Effects that were not asked for are NOT created: creating one takes its control away from other equalizer
+     * apps (only one app controls an effect type), so each is created only when the user wants it.
+     *
+     * Every outcome is reported to [health]: a creation that failed must be visible later (bypass), and an effect
+     * that was created is watched for another app taking control of it.
+     */
+    private fun fxCreate(want: Collection<String>): Map<String, Any> {
         val out = HashMap<String, Any>()
+        val have = fxQuery()
 
-        out["bass"] = try {
-            val b = BassBoost(0, 0)
-            bass = b
-            b.enabled = false
-            mapOf("ok" to true, "strengthSupported" to b.strengthSupported)
-        } catch (e: Exception) {
-            failure(e)
+        fun report(name: String, fx: AudioEffect?, strength: Boolean): Map<String, Any> =
+            if (fx != null) mapOf("ok" to true, "strengthSupported" to strength)
+            else if (have.contains(FX_TYPES.getValue(name))) mapOf("ok" to true, "strengthSupported" to true)
+            else mapOf("ok" to false)
+
+        if (want.contains("bass") && bass == null) {
+            try {
+                val b = BassBoost(0, 0)
+                bass = b
+                b.enabled = false
+                health.created("bass", true)
+                watchControl(b, "bass")
+            } catch (e: Throwable) {
+                health.created("bass", false)
+                out["bass"] = failure(e)
+            }
+        }
+        if (want.contains("virt") && virt == null) {
+            try {
+                val v = Virtualizer(0, 0)
+                virt = v
+                v.enabled = false
+                health.created("virt", true)
+                watchControl(v, "virt")
+            } catch (e: Throwable) {
+                health.created("virt", false)
+                out["virt"] = failure(e)
+            }
+        }
+        if (want.contains("loud") && loud == null) {
+            try {
+                val l = LoudnessEnhancer(0)
+                loud = l
+                l.enabled = false
+                health.created("loud", true)
+                watchControl(l, "loud")
+            } catch (e: Throwable) {
+                health.created("loud", false)
+                out["loud"] = failure(e)
+            }
         }
 
-        out["virt"] = try {
-            val v = Virtualizer(0, 0)
-            virt = v
-            v.enabled = false
-            mapOf("ok" to true, "strengthSupported" to v.strengthSupported)
-        } catch (e: Exception) {
-            failure(e)
-        }
-
-        out["loud"] = try {
-            val l = LoudnessEnhancer(0)
-            loud = l
-            l.enabled = false
-            mapOf("ok" to true, "strengthSupported" to true)
-        } catch (e: Exception) {
-            failure(e)
-        }
-
+        if (!out.containsKey("bass")) out["bass"] = report("bass", bass, bass?.strengthSupported ?: true)
+        if (!out.containsKey("virt")) out["virt"] = report("virt", virt, virt?.strengthSupported ?: true)
+        if (!out.containsKey("loud")) out["loud"] = report("loud", loud, true)
         return out
     }
 
-    fun fxStart(): Map<String, Any> {
-        fxRelease()
-        val out = fxCreate()
+    /** Type UUIDs (as text) of every effect this phone lists. Nothing is instantiated. */
+    private fun fxQuery(): Set<String> {
+        val have = HashSet<String>()
+        try {
+            AudioEffect.queryEffects()?.forEach { have.add(it.type.toString()) }
+        } catch (ignored: Exception) {
+        }
+        return have
+    }
+
+    /**
+     * Which of the three effects this phone lists, WITHOUT creating any of them: creating one takes its control away
+     * from other equalizer apps (only one app controls an effect type), so we do it only when the user wants it.
+     * Strength support is only known from a real instance, so it is reported as supported here.
+     */
+    fun fxProbe(): Map<String, Any> {
+        val have = fxQuery()
+        fun entry(name: String): Map<String, Any> =
+            if (have.contains(FX_TYPES.getValue(name))) mapOf("ok" to true, "strengthSupported" to true) else mapOf("ok" to false)
+        return mapOf("bass" to entry("bass"), "virt" to entry("virt"), "loud" to entry("loud"))
+    }
+
+    /** Creates the named effects that do not exist yet ([names] null = all three) and keeps the ones already held. */
+    fun fxStart(names: List<String>? = null): Map<String, Any> {
+        val want = (names ?: FX_NAMES).filter { FX_NAMES.contains(it) }
+        val out = fxCreate(want)
         fxActive = true
         logAdd("fx", "started: " + out.entries.joinToString(" ") { (k, v) -> "$k=" + ((v as? Map<*, *>)?.get("ok") ?: v) })
+        reviewBypass()
         persist()
         watchRoutes()
         emit()
@@ -540,17 +661,32 @@ object EngineHub {
         fxOn[name] = on
         fxVal[name] = value
         try {
-            fxApply(name)
-        } catch (e: Exception) {
+            val ok = fxApply(name)
+            health.applied(name, ok || !on)
+            if (on && !ok) {
+                lastError = "$name did not turn on (the effect is missing or another app controls it)"
+            } else {
+                noteOk()
+            }
+        } catch (e: Throwable) {
+            health.applied(name, !on)
             lastError = e.message ?: e.javaClass.simpleName
         }
+        reviewBypass()
         persist()
         emit()
     }
 
-    private fun fxApply(name: String) {
+    /** Sets the remembered state of one effect. True when the effect exists and now reads back as requested. */
+    private fun fxApply(name: String): Boolean {
         val on = fxOn[name] ?: false
         val value = fxVal[name] ?: 0
+        val fx: AudioEffect? = when (name) {
+            "bass" -> bass
+            "virt" -> virt
+            "loud" -> loud
+            else -> null
+        }
         when (name) {
             "bass" -> {
                 val b = bass
@@ -574,12 +710,15 @@ object EngineHub {
                 }
             }
         }
+        return fx != null && fx.enabled == on
     }
 
     fun fxStop() {
         logAdd("fx", "stopped")
         fxRelease()
         fxActive = false
+        noteOk()
+        reviewBypass()
         persist()
         maybeUnwatch()
         emit()
@@ -601,6 +740,7 @@ object EngineHub {
         bass = null
         virt = null
         loud = null
+        for (n in FX_NAMES) health.clear(n)
     }
 
     // ---------------------------------------------------------------- bypass (state + return rule)
@@ -609,18 +749,19 @@ object EngineHub {
      * Another app may take over the effect (only one app controls an effect type at a time). The system tells us;
      * the sound is then unprocessed, which must be visible and must come back by itself when possible.
      */
-    private fun watchControl(e: AudioEffect) {
-        controlLost = try {
-            !e.hasControl()
+    private fun watchControl(e: AudioEffect, name: String) {
+        val has = try {
+            e.hasControl()
         } catch (ignored: Exception) {
-            false
+            true
         }
-        if (controlLost) logAdd("control", "created WITHOUT control (another app owns this effect)")
+        health.control(name, has)
+        if (!has) logAdd("control", "$name created WITHOUT control (another app owns this effect)")
         try {
             e.setControlStatusListener { _, granted ->
-                logAdd("control", "control ${if (granted) "GRANTED" else "LOST"}")
-                controlLost = !granted
-                if (controlLost) scheduleRetry() else cancelRetry()
+                logAdd("control", "$name control ${if (granted) "GRANTED" else "LOST"}")
+                health.control(name, granted)
+                if (bypassReason() != null) scheduleRetry() else cancelRetry()
                 emit()
             }
         } catch (ignored: Exception) {
@@ -656,48 +797,60 @@ object EngineHub {
     /** Throws everything away and recreates it from the remembered settings. */
     fun rebuild() {
         var err: String? = null
-        controlLost = false
         try {
             if (eqKind == "system") {
                 releaseEq()
+                health.clear("eq")
                 val e = Equalizer(0, sysSession)
                 eq = e
-                watchControl(e)
+                health.created("eq", true)
+                watchControl(e, "eq")
                 applySysLevels()
                 e.enabled = eqEnabled
+                health.applied("eq", !eqEnabled || e.enabled)
                 eqBands = e.numberOfBands.toInt()
             } else if (eqKind == "dynamics" && Build.VERSION.SDK_INT >= 28) {
                 releaseDp()
+                health.clear("eq")
                 val d = createDp(dpCenters)
                 dp = d
-                watchControl(d)
+                health.created("eq", true)
+                watchControl(d, "eq")
                 if (dpGains.isNotEmpty()) applyDp()
                 d.enabled = eqEnabled
+                health.applied("eq", !eqEnabled || d.enabled)
                 eqBands = dpCenters.size
             }
         } catch (t: Throwable) {
+            health.created("eq", false)
             err = t.message ?: t.javaClass.simpleName
         }
         if (fxActive) {
-            try {
-                fxRelease()
-                fxCreate()
-                for (k in fxOn.keys.toList()) fxApply(k)
-            } catch (t: Throwable) {
-                err = err ?: (t.message ?: t.javaClass.simpleName)
+            fxRelease()
+            // Only the effects the user has switched on come back: the others are left to other apps.
+            val made = fxCreate(FX_NAMES.filter { fxOn[it] == true }) // reports each effect to [health]; never throws
+            for (k in FX_NAMES) {
+                val wantsIt = fxOn[k] == true
+                try {
+                    val ok = fxApply(k)
+                    health.applied(k, ok || !wantsIt)
+                } catch (t: Throwable) {
+                    health.applied(k, !wantsIt)
+                    err = err ?: "$k: ${t.message ?: t.javaClass.simpleName}"
+                }
+                val m = made[k] as? Map<*, *>
+                if (wantsIt && m?.get("ok") != true) err = err ?: "$k: ${m?.get("error") ?: "could not be created"}"
             }
         }
-        createFailed = err != null
         lastError = err
         lastRebuildMs = System.currentTimeMillis()
         logAdd(
             "rebuild",
-            "kind=$eqKind enabled=$eqEnabled fx=$fxActive -> ${if (err == null) "ok" else "ERROR $err"}" +
-                (if (controlLost) " controlLost" else "")
+            "kind=$eqKind enabled=$eqEnabled fx=$fxActive -> ${if (err == null) "ok" else "ERROR $err"} | ${health.describe()}"
         )
         // The return rule: while the sound is unprocessed, try again by itself (5 s, 15 s, 45 s), then wait for
         // the next output change, app resume or the user's retry button.
-        if (createFailed || controlLost) scheduleRetry() else cancelRetry()
+        if (bypassReason() != null) scheduleRetry() else cancelRetry()
         emit()
     }
 
@@ -835,10 +988,17 @@ object EngineHub {
     }
 
     fun setLocked(v: Boolean) {
-        if (locked != v) logAdd("lock", "locked=$v")
+        val was = locked
+        if (was != v) logAdd("lock", "locked=$v")
         locked = v
         persist()
-        emit()
+        if (was && !v) {
+            // The output may have changed while locked: look at it again now, instead of waiting for the next change.
+            lastKey = null
+            onRouteChange("unlocked")
+        } else {
+            emit()
+        }
     }
 
     private fun applySlot(s: Slot) {

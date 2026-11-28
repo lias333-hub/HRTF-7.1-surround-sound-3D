@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:directional_audio/eq_model.dart';
@@ -47,6 +49,36 @@ void main() {
     expect(parseGraphicEq('hello world'), isNull);
     expect(parseGraphicEq('GraphicEQ: 20'), isNull);
     expect(parseGraphicEq(''), isNull);
+  });
+
+  test('parseGraphicEq ignores 0 Hz and unusable numbers instead of producing NaN (AU-29)', () {
+    expect(parseGraphicEq('GraphicEQ: 0 6; 1000 0'), isNull); // only one usable point left
+    final r = parseGraphicEq('GraphicEQ: 0 6; 20 3; 20000 0');
+    expect(r, isNotNull);
+    expect(r!.gains.every((g) => g.isFinite), isTrue);
+    expect(parseGraphicEq('GraphicEQ: ${'9' * 400} 6; 20 3; 20000 0')!.gains.every((g) => g.isFinite), isTrue);
+  });
+
+  test('headroomPreamp keeps the total boost at 0 dB or less (AU-18)', () {
+    const bass = <double>[6, 5, 4, 2, 0, 0, 0, 0, 0, 0];
+    expect(headroomPreamp(bass, 0), -6); // +6 dB bass would clip loud music: lowered by 6
+    expect(headroomPreamp(List<double>.filled(10, 0), 0), 0); // flat: nothing to do
+    expect(headroomPreamp(const <double>[2, 0, 0, 0, 0, 0, 0, 0, 0, 0], -3), -3); // the user's lower value is kept
+    expect(headroomPreamp(List<double>.filled(10, 0), 6), 0); // a boost on a flat curve is capped at 0 dB total
+    expect(headroomPreamp(List<double>.filled(10, -3), 0), 0);
+    expect(headroomPreamp(List<double>.filled(10, -3), 6), 3); // an all-cut curve leaves room up to its own peak
+    expect(headroomPreamp(const <double>[], 2), 2);
+  });
+
+  test('headroomPreamp: with it, no built-in profile peaks above 0 dB at any preamp', () {
+    for (final p in kBuiltInProfiles) {
+      for (var pre = kMinGain; pre <= kMaxGain; pre += 1.5) {
+        final eff = headroomPreamp(p.gains, pre);
+        expect(eff, lessThanOrEqualTo(pre), reason: '${p.name} pre=$pre');
+        expect(p.gains.reduce(math.max) + eff, lessThanOrEqualTo(1e-9), reason: '${p.name} pre=$pre');
+        expect(eff, inInclusiveRange(kMinGain, kMaxGain), reason: 'stays inside the native range');
+      }
+    }
   });
 
   test('format then parse round-trips a smooth profile within 1 dB', () {

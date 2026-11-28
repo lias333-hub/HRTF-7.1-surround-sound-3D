@@ -143,7 +143,8 @@ class MainActivity : FlutterActivity() {
                         }
                         "deviceInfo" -> result.success(deviceInfo())
                         // --- bass / virtualizer / loudness
-                        "fxStart" -> result.success(EngineHub.fxStart())
+                        "fxProbe" -> result.success(EngineHub.fxProbe())
+                        "fxStart" -> result.success(EngineHub.fxStart(call.argument<List<String>>("names")))
                         "fxSet" -> {
                             EngineHub.fxSet(
                                 call.argument<String>("name") ?: "",
@@ -239,7 +240,14 @@ class MainActivity : FlutterActivity() {
             .putExtra("text", text)
             .putExtra("stop", stop)
             .putExtra("bypass", bypass)
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
+        } catch (e: Exception) {
+            // Android refused to start the service: do not leave "wanted" set for a service that never ran.
+            EngineHub.logAdd("svc", "start request FAILED: ${e.message ?: e.javaClass.simpleName}")
+            EngineHub.setWanted(false)
+            throw e
+        }
     }
 
     // "na" below Android 13 (no runtime permission), otherwise "granted" or "denied".

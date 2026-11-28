@@ -5,6 +5,5 @@
 /.flutter-plugins-dependencies
 /.packages
 /.metadata
-/pubspec.lock
 *.iml
 .idea/

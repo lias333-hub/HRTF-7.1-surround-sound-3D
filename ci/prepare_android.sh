@@ -24,6 +24,17 @@ mkdir -p "$pkg_dir"
 cp native/*.kt "$pkg_dir/"
 cp native/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
 
+# minSdk is a product decision (Android 5.0 = API 21), not whatever Flutter's template defaults to (AU-31): set it
+# explicitly. ci/check_apk_manifest.sh then proves it on the built APK. Idempotent: a second run finds nothing to change.
+python3 - <<'PY'
+import re
+p = "android/app/build.gradle"
+s = open(p).read()
+s2 = re.sub(r"minSdk(?:Version)?\s+flutter\.minSdkVersion", "minSdkVersion 21", s)
+if s2 != s:
+    open(p, "w").write(s2)
+PY
+
 # JVM unit tests for the pure Kotlin logic (run with: cd android && ./gradlew :app:testDebugUnitTest).
 test_dir=android/app/src/test/kotlin/com/directionalaudio/directional_audio
 mkdir -p "$test_dir"

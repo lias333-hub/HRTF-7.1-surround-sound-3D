@@ -65,7 +65,7 @@ void main() {
     expect(p['capture']!.state, CapState.needs);
     expect(p['dyn']!.state, CapState.yes);
     final q = caps(34);
-    expect(q['capture']!.state, CapState.consent);
+    expect(q['capture']!.state, CapState.consentPlanned); // the phone allows it; the app has not built it
     expect(q['eq']!.state, CapState.yes);
     expect(q['bass']!.state, CapState.yes);
     expect(q['virt']!.state, CapState.yes);
@@ -101,7 +101,7 @@ void main() {
     expect(t, contains('Band 4: 7000-20000 Hz (center 14000)'));
     expect(t, contains('Output sample rate: 48000 Hz, buffer: 192 frames'));
     expect(t, contains('Effects (3):'));
-    expect(t, contains('capture: possible with user consent'));
+    expect(t, contains('capture: possible with user consent (not built into the app yet)'));
     expect(t, contains('loud: not available'));
   });
 

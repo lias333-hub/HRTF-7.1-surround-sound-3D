@@ -86,6 +86,19 @@ double curveAt(List<double> gains, double hz) {
   return gains.last;
 }
 
+/// The preamp (dB) that really goes to the engine when auto headroom is on (AU-18).
+///
+/// Boosting a band raises the whole signal's peak: +6 dB on the bass with a 0 dB preamp pushes loud music past full
+/// scale and it clips (a harsh crackle). So the total boost is kept at 0 dB or less: the result is the smaller of the
+/// user's [preamp] and `-max(gains)` (a lowered preamp the user chose is kept; a boost is only allowed as far as the
+/// curve's own cuts leave room). It goes by the highest single band, which is not a proof of no clipping: neighbouring
+/// real bands overlap, so the true peak of the hardware response can be a little higher (not measured yet).
+double headroomPreamp(List<double> gains, double preamp) {
+  if (gains.isEmpty) return preamp;
+  final peak = gains.reduce(math.max);
+  return math.min(preamp, -peak) + 0.0; // "+ 0.0" turns a negative zero into a plain 0
+}
+
 /// Maps the 10-band curve onto the hardware equalizer's real bands.
 /// Each hardware band gets the average of the curve over its frequency range
 /// (7 log-spaced samples) plus [preamp], in millibels, clamped to the range
@@ -129,8 +142,8 @@ class ParsedEq {
 /// Parses text like `GraphicEQ: 20 -3.5; 25 -3.1; ...` (the format used by
 /// Wavelet and AutoEq's GraphicEQ.txt). An optional `Preamp: -6 dB` line is
 /// honoured. The points are resampled onto the 10 bands (average over +-half
-/// an octave around each centre, snapped to 0.5 dB). Returns null when fewer
-/// than two valid points are found.
+/// an octave around each centre, snapped to 0.5 dB). Points at 0 Hz or below are ignored.
+/// Returns null when fewer than two valid points are found.
 ParsedEq? parseGraphicEq(String text) {
   final preMatch = RegExp(r'Preamp:\s*(-?\d+(?:\.\d+)?)\s*dB',
           caseSensitive: false)
@@ -145,7 +158,11 @@ ParsedEq? parseGraphicEq(String text) {
   for (final part in body.split(RegExp(r'[;\n]'))) {
     final m = re.firstMatch(part);
     if (m != null) {
-      pts.add((double.parse(m.group(1)!), double.parse(m.group(2)!)));
+      final hz = double.parse(m.group(1)!);
+      final db = double.parse(m.group(2)!);
+      // A frequency of 0 Hz (or an absurdly long number that overflows) has no logarithm: the point is dropped
+      // instead of turning the whole curve into NaN (AU-29).
+      if (hz > 0 && hz.isFinite && db.isFinite) pts.add((hz, db));
     }
   }
   if (pts.length < 2) return null;

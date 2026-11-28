@@ -10,6 +10,7 @@ import 'engine_screen.dart';
 import 'eq_model.dart';
 import 'store.dart';
 import 'strings.dart';
+import 'throttle.dart';
 
 class EqScreen extends StatefulWidget {
   const EqScreen({super.key, required this.lang, required this.onLanguage});
@@ -31,8 +32,16 @@ class _EqScreenState extends State<EqScreen> {
   List<EqProfile> _user = [];
   bool _enabled = false;
   bool _loaded = false;
-  String? _error;
+  String? _error; // a failure to start or stop (shown until the next success)
+  String? _applyError; // the last failed send of the curve to the engine (cleared by the next successful send)
+  bool _notOn = false; // the engine refused to switch on (the effect is missing or another app owns it)
+  bool _auto = true; // automatic headroom (AU-18)
   String _pref = 'system';
+
+  // A slider reports many changes a second. Sending each one and writing it to the disk is wasteful (AU-26): the
+  // send is merged to one every 50 ms and the save to one every 400 ms; lifting the finger flushes both.
+  late final Throttle _applyThrottle = Throttle(const Duration(milliseconds: 50), _apply);
+  late final Throttle _saveThrottle = Throttle(const Duration(milliseconds: 400), _saveWorking);
 
   /// The native engine's view: current output, assignments, lock, bypass.
   EngineStatus _st = EngineStatus.none;
@@ -51,6 +60,8 @@ class _EqScreenState extends State<EqScreen> {
 
   @override
   void dispose() {
+    _applyThrottle.cancel();
+    _saveThrottle.flush(); // the last position of a slider must not be lost
     _sub?.cancel();
     super.dispose();
   }
@@ -67,7 +78,10 @@ class _EqScreenState extends State<EqScreen> {
   /// the user just made.
   void _onStatus(EngineStatus s) {
     if (!mounted) return;
-    setState(() => _st = s);
+    setState(() {
+      _st = s;
+      if (s.bypass == null) _notOn = false; // it recovered (the native side retries by itself)
+    });
     if (s.switchSeq > _seen) {
       _seen = s.switchSeq;
       if (_enabled) _adopt(s.profile);
@@ -98,8 +112,11 @@ class _EqScreenState extends State<EqScreen> {
   Future<void> _init() async {
     final s = await Store.load();
     final pref = await Store.loadBackend();
+    final auto = await Store.loadAutoPreamp();
+    _engine.autoPreamp = auto;
     if (!mounted) return;
     setState(() {
+      _auto = auto;
       _user = s.user;
       _working = s.working;
       _selected = _all.any((e) => e.name == s.selected)
@@ -115,8 +132,11 @@ class _EqScreenState extends State<EqScreen> {
     try {
       if (on) {
         await _engine.start(pref: _pref);
-        await _engine.setEnabled(true);
+        // The answer says whether the effect really is on now (AU-13). If not, the switch stays on (it is what the
+        // user asked for; the native side keeps retrying) but the screen says so instead of pretending.
+        final took = await _engine.setEnabled(true);
         _enabled = true;
+        _notOn = !took;
         // Refresh the saved per-output copies, let the native side pick the profile of the current output
         // (it may have changed while the screen was closed), and only then send what is selected.
         await _syncSlots();
@@ -128,13 +148,17 @@ class _EqScreenState extends State<EqScreen> {
       } else {
         await _engine.setEnabled(false);
         _enabled = false;
+        _notOn = false;
+        _applyError = null;
       }
       if (mounted) setState(() => _error = null);
     } on PlatformException catch (e) {
       _enabled = false;
+      _notOn = false;
       if (mounted) setState(() => _error = e.message ?? e.code);
     } on MissingPluginException {
       _enabled = false;
+      _notOn = false;
       if (mounted) setState(() => _error = 'native bridge missing');
     }
     Store.saveEnabled(_enabled);
@@ -159,15 +183,57 @@ class _EqScreenState extends State<EqScreen> {
     if (!_enabled) return;
     try {
       await _engine.apply(_working);
+      // A send that worked means an old send error no longer describes the present (AU-15).
+      if (mounted && _applyError != null) setState(() => _applyError = null);
     } on PlatformException catch (e) {
-      if (mounted) setState(() => _error = e.message ?? e.code);
+      if (mounted) setState(() => _applyError = e.message ?? e.code);
+    } on MissingPluginException {
+      if (mounted) setState(() => _applyError = 'native bridge missing');
     }
   }
 
+  Future<void> _saveWorking() => Store.saveWorking(_working, _selected);
+
+  /// A discrete change (pick a profile, reset, import): applied and saved at once.
   void _edit(EqProfile p) {
+    _applyThrottle.cancel();
+    _saveThrottle.cancel();
     setState(() => _working = p);
-    Store.saveWorking(p, _selected);
+    _saveWorking();
     _apply();
+  }
+
+  /// A slider tick: the screen follows at once, the engine and the disk are updated at a calmer pace (AU-26).
+  void _editLive(EqProfile p) {
+    setState(() => _working = p);
+    _applyThrottle.run();
+    _saveThrottle.run();
+  }
+
+  /// The finger was lifted: send and save the final position now.
+  void _editEnd() {
+    _applyThrottle.flush();
+    _saveThrottle.flush();
+  }
+
+  /// Automatic headroom on/off: the engine gets the same curve with a different preamp, so send it again and
+  /// refresh the per-output copies (they carry the preamp too).
+  Future<void> _setAuto(bool v) async {
+    setState(() => _auto = v);
+    _engine.autoPreamp = v;
+    await Store.saveAutoPreamp(v);
+    if (_enabled) {
+      await _apply();
+      await _syncSlots();
+    }
+  }
+
+  String _autoText() {
+    if (!_auto) return L10n.t('auto_preamp_off');
+    final cut = _working.preamp - headroomPreamp(_working.gains, _working.preamp);
+    return cut > 0.05
+        ? L10n.f('auto_preamp_on', {'db': cut.toStringAsFixed(1)})
+        : L10n.t('auto_preamp_none');
   }
 
   void _select(String key) {
@@ -203,10 +269,18 @@ class _EqScreenState extends State<EqScreen> {
         ],
       ),
     );
-    if (name == null || name.isEmpty) return;
+    if (name == null || name.isEmpty || !mounted) return;
+    // "builtin:" names belong to the built-in profiles: a saved one with that prefix could not be deleted and would
+    // appear twice in the list (AU-28).
+    if (name.startsWith(kBuiltInPrefix)) {
+      _snack(L10n.t('name_reserved'));
+      return;
+    }
+    final i = _user.indexWhere((e) => e.name == name);
+    if (i >= 0 && !await _confirmReplace(name)) return;
+    if (!mounted) return;
     final p = EqProfile(
         name: name, gains: List<double>.of(_working.gains), preamp: _working.preamp);
-    final i = _user.indexWhere((e) => e.name == name);
     setState(() {
       if (i >= 0) {
         _user[i] = p;
@@ -219,6 +293,20 @@ class _EqScreenState extends State<EqScreen> {
     await Store.saveUser(_user);
     await Store.saveWorking(p, name);
     await _syncSlots(); // an assignment that points at this name now uses the new contents
+  }
+
+  Future<bool> _confirmReplace(String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(L10n.f('name_replace', {'n': name})),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(L10n.t('replace'))),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   void _delete() {
@@ -404,8 +492,19 @@ class _EqScreenState extends State<EqScreen> {
   String _freqLabel(double hz) =>
       hz >= 1000 ? '${(hz / 1000).round()}k' : hz.round().toString();
 
+  /// Why the equalizer is not doing what the switch says, or null. Only what is true right now (AU-14/AU-15).
+  String? get _problem {
+    if (_error != null) return _error;
+    if (_applyError != null) return _applyError;
+    if (!_enabled) return null;
+    if (_notOn) return L10n.t('err_not_on');
+    return _st.error;
+  }
+
   String _statusText() {
     final info = _engine.info;
+    // "N bands active" would be a lie while the native side reports the sound as unprocessed (AU-14).
+    if (_enabled && _st.bypass != null) return L10n.t('byp_title');
     if (_enabled && _engine.backend == EqBackend.dynamics) {
       return L10n.f('status_dyn', {'n': '${_engine.bands}'});
     }
@@ -458,7 +557,8 @@ class _EqScreenState extends State<EqScreen> {
                 max: kMaxGain,
                 divisions: 48,
                 value: _working.gains[i],
-                onChanged: (v) => _edit(_working.withGain(i, v)),
+                onChanged: (v) => _editLive(_working.withGain(i, v)),
+                onChangeEnd: (_) => _editEnd(),
               ),
             ),
           ),
@@ -491,10 +591,10 @@ class _EqScreenState extends State<EqScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(t('effect_on')),
                   subtitle: Text(
-                    _error ?? _statusText(),
-                    style: _error == null
-                        ? null
-                        : TextStyle(color: Theme.of(context).colorScheme.error),
+                    _problem ?? _statusText(),
+                    style: (_problem != null || (_enabled && _st.bypass != null))
+                        ? TextStyle(color: Theme.of(context).colorScheme.error)
+                        : null,
                   ),
                   value: _enabled,
                   onChanged: _setEnabled,
@@ -536,7 +636,8 @@ class _EqScreenState extends State<EqScreen> {
                         max: kMaxGain,
                         divisions: 48,
                         value: _working.preamp,
-                        onChanged: (v) => _edit(_working.withPreamp(v)),
+                        onChanged: (v) => _editLive(_working.withPreamp(v)),
+                        onChangeEnd: (_) => _editEnd(),
                       ),
                     ),
                     Directionality(
@@ -544,6 +645,13 @@ class _EqScreenState extends State<EqScreen> {
                       child: Text('${_working.preamp.toStringAsFixed(1)} dB'),
                     ),
                   ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(t('auto_preamp')),
+                  subtitle: Text(_autoText()),
+                  value: _auto,
+                  onChanged: _setAuto,
                 ),
                 const SizedBox(height: 8),
                 Wrap(

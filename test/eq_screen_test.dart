@@ -25,7 +25,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Slider), findsNWidgets(11));
-      expect(find.byType(Switch), findsNWidgets(2)); // master switch + profile lock
+      expect(find.byType(Switch), findsNWidgets(3)); // master switch + profile lock + automatic headroom
       expect(find.text(L10n.t('out_title')), findsOneWidget);
       expect(find.text(L10n.t('open_info')), findsOneWidget);
       expect(tester.takeException(), isNull);

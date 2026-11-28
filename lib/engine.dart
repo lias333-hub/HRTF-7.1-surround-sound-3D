@@ -57,6 +57,13 @@ class EqEngine {
   DeviceInfo? info;
   EqBackend? backend;
 
+  /// Auto headroom (AU-18): the preamp that is sent is lowered so the curve's peak cannot go above 0 dB
+  /// (see [headroomPreamp]). Profiles keep the preamp the user chose; only what goes to the engine changes.
+  bool autoPreamp = true;
+
+  /// The preamp (dB) that really goes to the engine for [p].
+  double preampFor(EqProfile p) => autoPreamp ? headroomPreamp(p.gains, p.preamp) : p.preamp;
+
   /// How many real bands the running back end has.
   int get bands => backend == EqBackend.dynamics ? kBandFreqs.length : (info?.bands ?? 0);
 
@@ -85,7 +92,7 @@ class EqEngine {
     if (backend != EqBackend.system || i == null) return const [];
     return deviceLevels(
       gains: p.gains,
-      preamp: p.preamp,
+      preamp: preampFor(p),
       lows: i.lows,
       highs: i.highs,
       centers: i.centers,
@@ -99,7 +106,7 @@ class EqEngine {
   Future<void> apply(EqProfile p) async {
     if (backend == EqBackend.dynamics) {
       await _ch.invokeMethod<void>(
-          'dpGains', {'gains': p.gains, 'preamp': p.preamp, 'profile': p.name});
+          'dpGains', {'gains': p.gains, 'preamp': preampFor(p), 'profile': p.name});
       return;
     }
     if (backend == EqBackend.system && info != null) {
@@ -114,7 +121,7 @@ class EqEngine {
         'name': o.name,
         'profile': p.name,
         'gains': p.gains,
-        'preamp': p.preamp,
+        'preamp': preampFor(p),
         'levels': _levels(p),
       });
 
@@ -164,14 +171,19 @@ class FxEngine {
   static const _ch = MethodChannel('directional/eq');
   static const keys = ['bass', 'virt', 'loud'];
 
-  /// Creates the effects (disabled) and reports which ones the device accepted.
-  Future<Map<String, FxStatus>> start() async {
-    final m = await _ch.invokeMethod<Map<dynamic, dynamic>>('fxStart');
-    return {
-      for (final k in keys)
-        k: FxStatus.fromMap((m?[k] as Map?) ?? const {'ok': false}),
-    };
-  }
+  static Map<String, FxStatus> _parse(Map<dynamic, dynamic>? m) => {
+        for (final k in keys) k: FxStatus.fromMap((m?[k] as Map?) ?? const {'ok': false}),
+      };
+
+  /// Which effects this phone lists, WITHOUT creating any: creating one takes its control away from other
+  /// equalizer apps (only one app controls an effect type), so nothing is created until the user wants it (AU-25).
+  Future<Map<String, FxStatus>> probe() async =>
+      _parse(await _ch.invokeMethod<Map<dynamic, dynamic>>('fxProbe'));
+
+  /// Creates the effects named in [only] (all of them when null; one that already exists is kept), disabled, and
+  /// reports which ones the device accepted.
+  Future<Map<String, FxStatus>> start({List<String>? only}) async => _parse(
+      await _ch.invokeMethod<Map<dynamic, dynamic>>('fxStart', only == null ? null : {'names': only}));
 
   /// [value]: strength 0..1000 for bass/virt, gain in millibels 0..1500 for loud.
   Future<void> set(String name, bool on, int value) => _ch

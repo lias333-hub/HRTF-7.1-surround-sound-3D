@@ -18,6 +18,8 @@ jobs:
         with:
           flutter-version: '3.22.0'
           cache: true
+      - name: Docs and code agree on the version
+        run: bash ci/check_docs_version.sh
       - run: bash ci/prepare_android.sh
       - name: C++ core tests (host)
         run: bash ci/cpp_tests.sh
@@ -28,6 +30,8 @@ jobs:
       - run: flutter build apk --release
       - name: Verify the C++ core is in the APK for 32-bit and 64-bit ARM
         run: bash ci/check_native_libs.sh build/app/outputs/flutter-apk/app-release.apk
+      - name: Verify minSdk and permissions
+        run: bash ci/check_apk_manifest.sh build/app/outputs/flutter-apk/app-release.apk
       - name: Verify fixed test signing key
         run: bash ci/check_signing.sh build/app/outputs/flutter-apk/app-release.apk
       - uses: actions/upload-artifact@v4

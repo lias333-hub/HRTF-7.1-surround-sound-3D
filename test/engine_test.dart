@@ -12,6 +12,11 @@ class _Native {
   Map<String, dynamic> dp = {'ok': true, 'bands': 10};
   Map<String, dynamic> status = {};
   Map<String, dynamic>? log; // answer to logGet
+  Map<String, dynamic> fx = {
+    'bass': {'ok': true, 'strengthSupported': true},
+    'virt': {'ok': true, 'strengthSupported': false},
+    'loud': {'ok': false, 'error': 'refused'},
+  }; // answer to fxProbe / fxStart
 
   Future<Object?> handle(MethodCall c) async {
     calls.add(c);
@@ -22,6 +27,9 @@ class _Native {
         return dp;
       case 'logGet':
         return log;
+      case 'fxProbe':
+      case 'fxStart':
+        return fx;
       case 'start':
         return {
           'bands': 5,
@@ -88,7 +96,7 @@ void main() {
 
   test('apply sends dB gains + preamp to dynamics, millibel levels to the system equalizer', () async {
     final p = EqProfile.flat().withGain(0, 6).withPreamp(-3);
-    final d = EqEngine();
+    final d = EqEngine()..autoPreamp = false; // the raw values; the headroom rule has its own tests below
     await d.start(pref: 'dynamics');
     await d.apply(p);
     final last = native.calls.last;
@@ -97,7 +105,7 @@ void main() {
     expect(last.arguments['preamp'], -3.0);
 
     native.calls.clear();
-    final s = EqEngine();
+    final s = EqEngine()..autoPreamp = false;
     await s.start(pref: 'system');
     await s.apply(p);
     expect(native.calls.last.method, 'setLevels');
@@ -159,7 +167,7 @@ void main() {
   // ------------------------------------------------------------------ v0.4
 
   test('apply sends the profile name with the gains (dynamics) and with the levels (system)', () async {
-    final d = EqEngine();
+    final d = EqEngine()..autoPreamp = false;
     await d.start(pref: 'dynamics');
     await d.apply(EqProfile(name: 'user:x', gains: List<double>.filled(10, 2), preamp: -1));
     final dp = native.calls.lastWhere((c) => c.method == 'dpGains').arguments as Map;
@@ -316,5 +324,79 @@ void main() {
     expect((m.header, m.text), ('', ''));
     await EngineApi.clearEventLog();
     await EngineApi.logEvent('app', 'x');
+  });
+
+  // ------------------------------------------------------------------ 0.5.1 (auto headroom, lazy effects)
+
+  test('auto headroom lowers the preamp that goes to the engine; the profile keeps the user value (AU-18)', () async {
+    final p = EqProfile(name: 'user:b', gains: const <double>[6, 5, 4, 2, 0, 0, 0, 0, 0, 0], preamp: -3);
+    final d = EqEngine();
+    expect(d.autoPreamp, isTrue); // on by default
+    await d.start(pref: 'dynamics');
+    await d.apply(p);
+    expect(native.calls.last.arguments['preamp'], -6.0); // +6 dB peak: total boost must stay at 0 dB or less
+    expect(p.preamp, -3.0);
+    expect(d.preampFor(p), -6.0);
+
+    d.autoPreamp = false;
+    await d.apply(p);
+    expect(native.calls.last.arguments['preamp'], -3.0);
+
+    final flat = EqProfile.flat('user:f');
+    d.autoPreamp = true;
+    await d.apply(flat);
+    expect(native.calls.last.arguments['preamp'], 0.0);
+    expect(native.calls.last.arguments['preamp'].toString(), '0.0'); // not "-0.0"
+  });
+
+  test('auto headroom on the system equalizer: no band ends up above 0 dB, off lets a boost through', () async {
+    final bass = EqProfile(name: 'user:b', gains: const <double>[6, 5, 4, 2, 0, 0, 0, 0, 0, 0]);
+    final s = EqEngine();
+    await s.start(pref: 'system');
+    await s.apply(bass);
+    final on = native.calls.last.arguments['levels'] as List;
+    expect(on.every((x) => (x as int) <= 0), isTrue, reason: '$on');
+
+    s.autoPreamp = false;
+    await s.apply(bass);
+    final off = native.calls.last.arguments['levels'] as List;
+    expect(off.any((x) => (x as int) > 0), isTrue, reason: '$off');
+  });
+
+  test('the per-output copy carries the same effective preamp the live curve gets', () async {
+    const out = (key: '3|Headset', type: 3, name: 'Headset');
+    final d = EqEngine();
+    await d.start(pref: 'dynamics');
+    final p = EqProfile(name: 'user:b', gains: List<double>.filled(10, 4));
+    await d.assign(out, p);
+    expect(native.calls.last.arguments['preamp'], -4.0);
+    d.autoPreamp = false;
+    await d.assign(out, p);
+    expect(native.calls.last.arguments['preamp'], 0.0);
+  });
+
+  test('FxEngine.probe only asks; start() with names asks for those, start() alone asks for all (AU-25)', () async {
+    final f = FxEngine();
+    final probed = await f.probe();
+    expect(native.names, ['fxProbe']);
+    expect(probed['bass']!.ok, isTrue);
+    expect(probed['virt']!.strengthSupported, isFalse);
+    expect(probed['loud']!.ok, isFalse);
+
+    native.calls.clear();
+    await f.start(only: ['bass']);
+    expect(native.calls.single.method, 'fxStart');
+    expect(native.calls.single.arguments, {'names': ['bass']});
+
+    native.calls.clear();
+    await f.start();
+    expect(native.calls.single.arguments, isNull);
+  });
+
+  test('FxEngine answers with a "not available" entry for effects the native side does not mention', () async {
+    native.fx = {'bass': {'ok': true}};
+    final r = await FxEngine().probe();
+    expect(r.keys, ['bass', 'virt', 'loud']);
+    expect([r['bass']!.ok, r['virt']!.ok, r['loud']!.ok], [true, false, false]);
   });
 }

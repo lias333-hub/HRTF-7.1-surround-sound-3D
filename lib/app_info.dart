@@ -1,2 +1,2 @@
 /// Shown in Settings. Keep in sync with pubspec.yaml.
-const String kAppVersion = '0.5.0';
+const String kAppVersion = '0.5.1';

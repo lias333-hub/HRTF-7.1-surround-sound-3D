@@ -92,21 +92,23 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
         return L10n.f('cap_needs', {'v': '${c.version}'});
       case CapState.planned:
         return L10n.t('cap_planned');
+      case CapState.consentPlanned:
+        return L10n.t('cap_consent_planned');
     }
   }
 
   Widget _capRow(Capability c) {
     final cs = Theme.of(context).colorScheme;
     final good = c.state == CapState.yes || c.state == CapState.consent;
-    final color = good
-        ? cs.primary
-        : (c.state == CapState.planned ? cs.onSurfaceVariant : cs.error);
+    // Not built yet: neither a tick nor a cross.
+    final later = c.state == CapState.planned || c.state == CapState.consentPlanned;
+    final color = good ? cs.primary : (later ? cs.onSurfaceVariant : cs.error);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Icon(
-            good ? Icons.check_circle_outline : (c.state == CapState.planned ? Icons.schedule : Icons.cancel_outlined),
+            good ? Icons.check_circle_outline : (later ? Icons.schedule : Icons.cancel_outlined),
             size: 20,
             color: color,
           ),

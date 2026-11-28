@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,6 +30,9 @@ class _Native {
   int switchSeq = 0;
   Map<String, dynamic> sync = {}; // extra fields in the answer to outSync
   final args = <String, Object?>{}; // last arguments seen per method
+  bool takes = true; // answer to setEnabled(true): did the effect really switch on?
+  String? failNextApply; // when set, the next dpGains call fails with this message
+  final applied = <MethodCall>[]; // every dpGains call
 
   // v0.4.1 event log
   String logHeader = 'Samsung SM-J730F | Android 9 (API 28) | armeabi-v7a';
@@ -56,6 +61,17 @@ class _Native {
     calls.add(c.method);
     args[c.method] = c.arguments;
     switch (c.method) {
+      case 'setEnabled':
+        // the real native side answers whether the effect is really on now; switching off is always "done"
+        return (c.arguments as Map)['on'] == true ? takes : false;
+      case 'dpGains':
+        applied.add(c);
+        final f = failNextApply;
+        if (f != null) {
+          failNextApply = null;
+          throw PlatformException(code: 'APPLY', message: f);
+        }
+        return null;
       case 'outSync':
         return {...status, ...sync};
       case 'lockSet':
@@ -255,11 +271,13 @@ void main() {
     L10n.setPref('en', 'en');
     await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
 
-    expect(tester.widget<Switch>(find.byType(Switch).last).value, isFalse);
-    await tester.tap(find.byType(Switch).last);
+    final lock = find.descendant(
+        of: find.widgetWithText(SwitchListTile, L10n.t('out_lock')), matching: find.byType(Switch));
+    expect(tester.widget<Switch>(lock).value, isFalse);
+    await tester.tap(lock);
     await tester.pumpAndSettle();
     expect((native.args['lockSet'] as Map)['on'], isTrue);
-    expect(tester.widget<Switch>(find.byType(Switch).last).value, isTrue);
+    expect(tester.widget<Switch>(lock).value, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -412,5 +430,163 @@ void main() {
     expect(native.calls, contains('logClear'));
     expect(find.byType(SelectableText), findsNothing);
     expect(find.text(L10n.t('log_empty')), findsOneWidget);
+  });
+
+  // ------------------------------------------------------------------ 0.5.1: honest status, headroom, slider pace
+
+  Finder autoSwitch() => find.widgetWithText(SwitchListTile, L10n.t('auto_preamp'));
+
+  Future<void> pickProfile(WidgetTester tester, String name) async {
+    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(L10n.profileName(name)).last);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('EqScreen: when the effect does not really switch on, the screen says so (AU-13)', (tester) async {
+    SharedPreferences.setMockInitialValues({'backend': 'dynamics'});
+    mock(tester);
+    native.takes = false;
+    native.bypass = 'create_failed';
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('err_not_on')), findsOneWidget);
+    expect(find.textContaining(L10n.f('status_dyn', {'n': '10'}).split('.').first), findsNothing);
+    expect(tester.widget<Switch>(find.byType(Switch).first).value, isTrue); // still what the user asked for
+    expect(find.text(L10n.t('byp_retry')), findsOneWidget);
+
+    // The native side recovered by itself: the message goes away and the normal status returns.
+    native.bypass = null;
+    await _push(tester, native.status);
+    expect(find.text(L10n.t('err_not_on')), findsNothing);
+    expect(find.textContaining(L10n.f('status_dyn', {'n': '10'}).split('.').first), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EqScreen: while the sound is bypassed the status line does not claim bands are active (AU-14)',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'backend': 'dynamics', 'enabled': true});
+    mock(tester);
+    native.bypass = 'control_lost';
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+
+    expect(find.textContaining(L10n.f('status_dyn', {'n': '10'}).split('.').first), findsNothing);
+    expect(find.text(L10n.t('byp_title')), findsNWidgets(2)); // the status line and the banner
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EqScreen: a send error shows until the next send works (AU-15)', (tester) async {
+    SharedPreferences.setMockInitialValues({'backend': 'dynamics', 'enabled': true});
+    mock(tester);
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+
+    native.failNextApply = 'boom';
+    await pickProfile(tester, 'builtin:bass');
+    expect(find.text('boom'), findsOneWidget);
+
+    await pickProfile(tester, 'builtin:treble');
+    expect(find.text('boom'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EqScreen: automatic headroom lowers what is sent, shows by how much, and can be switched off',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'backend': 'dynamics', 'enabled': true});
+    mock(tester);
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+
+    expect(tester.widget<SwitchListTile>(autoSwitch()).value, isTrue); // on by default
+    expect(find.text(L10n.t('auto_preamp_none')), findsOneWidget); // flat curve: nothing to lower
+
+    await pickProfile(tester, 'builtin:bass'); // +6 dB at the lowest band
+    expect(native.applied.last.arguments['preamp'], -6.0);
+    expect(find.text(L10n.f('auto_preamp_on', {'db': '6.0'})), findsOneWidget);
+
+    await tester.tap(autoSwitch());
+    await tester.pumpAndSettle();
+    expect(native.applied.last.arguments['preamp'], 0.0); // the same curve, sent again without the cut
+    expect(find.text(L10n.t('auto_preamp_off')), findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getBool('autoPreamp'), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EqScreen: a saved "automatic headroom off" is respected after restart', (tester) async {
+    SharedPreferences.setMockInitialValues({'backend': 'dynamics', 'enabled': true, 'autoPreamp': false});
+    mock(tester);
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+    expect(tester.widget<SwitchListTile>(autoSwitch()).value, isFalse);
+    await pickProfile(tester, 'builtin:bass');
+    expect(native.applied.last.arguments['preamp'], 0.0);
+  });
+
+  testWidgets('EqScreen: a slider drag sends and saves once after the finger lifts, not once per tick (AU-26)',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'backend': 'dynamics', 'enabled': true});
+    mock(tester);
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+    native.applied.clear();
+
+    final g = await tester.startGesture(tester.getCenter(find.byType(Slider).first));
+    for (var i = 0; i < 12; i++) {
+      await g.moveBy(const Offset(0, -12)); // no time passes between the moves
+    }
+    expect(native.applied, isEmpty); // nothing sent while the finger is still moving fast
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(native.applied, hasLength(1)); // the final position, once
+    final gain = ((native.applied.single.arguments as Map)['gains'] as List).first as double;
+    expect(gain, isNot(0.0)); // and the slider really moved
+
+    final saved = (await SharedPreferences.getInstance()).getString('working')!;
+    expect(saved, contains(gain.toString())); // the same final value was saved
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('EqScreen: a profile name starting with "builtin:" is refused, a duplicate asks before replacing (AU-28)',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    mock(tester);
+    L10n.setPref('en', 'en');
+    await _pump(tester, EqScreen(lang: L10n.lang, onLanguage: () {}));
+
+    Future<void> saveAs(String name) async {
+      await tester.tap(find.byIcon(Icons.save_outlined));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), name);
+      await tester.tap(find.widgetWithText(FilledButton, L10n.t('save')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<int> userCount() async {
+      final raw = (await SharedPreferences.getInstance()).getString('user');
+      return raw == null ? 0 : (jsonDecode(raw) as List).length;
+    }
+
+    await saveAs('builtin:flat');
+    expect(find.text(L10n.t('name_reserved')), findsOneWidget);
+    expect(await userCount(), 0);
+
+    await saveAs('mine');
+    expect(await userCount(), 1);
+
+    await saveAs('mine'); // same name again: asks first
+    expect(find.text(L10n.f('name_replace', {'n': 'mine'})), findsOneWidget);
+    await tester.tap(find.text(L10n.t('cancel')));
+    await tester.pumpAndSettle();
+    expect(await userCount(), 1);
+
+    await saveAs('mine');
+    await tester.tap(find.widgetWithText(FilledButton, L10n.t('replace')));
+    await tester.pumpAndSettle();
+    expect(await userCount(), 1); // replaced, not duplicated
+    expect(tester.takeException(), isNull);
   });
 }
